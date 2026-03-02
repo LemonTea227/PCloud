@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/secondPhotoLinearLayout"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="5dp"
+    android:orientation="horizontal">
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_weight=".25">
+
+        <ImageButton
+            android:id="@+id/firstPhotoImageButton"
+            android:layout_width="match_parent"
+            android:layout_height="100dp"
+            android:layout_marginEnd="5dp"
+            android:background="@null"
+            android:scaleType="fitCenter"
+            tools:srcCompat="@tools:sample/avatars" />
+
+    </RelativeLayout>
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_weight=".25">
+
+        <ImageButton
+            android:id="@+id/secondPhotoImageButton"
+            android:layout_width="match_parent"
+            android:layout_height="100dp"
+            android:layout_marginEnd="5dp"
+            android:background="@null"
+            android:scaleType="fitCenter"
+            tools:srcCompat="@tools:sample/avatars" />
+
+    </RelativeLayout>
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_weight=".25">
+
+        <ImageButton
+            android:id="@+id/thirdPhotoImageButton"
+            android:layout_width="match_parent"
+            android:layout_height="100dp"
+            android:layout_marginEnd="5dp"
+            android:background="@null"
+            android:scaleType="fitCenter"
+            tools:srcCompat="@tools:sample/avatars" />
+    </RelativeLayout>
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_weight=".25">
+
+        <ImageButton
+            android:id="@+id/fourthPhotoImageButton"
+            android:layout_width="match_parent"
+            android:layout_height="100dp"
+            android:background="@null"
+            android:scaleType="fitCenter"
+            tools:srcCompat="@tools:sample/avatars" />
+    </RelativeLayout>
+
+</LinearLayout>

@@ -1,0 +1,37 @@
+<resources>
+    <string name="app_name" translatable="false">PCloud</string>
+
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="login">Login</string>
+    <string name="register">Register</string>
+    <string name="username_invalid_format">username must include english letters and can include digits</string>
+    <string name="password_invalid_format">password must be between 8 to 16 characters and must include english characters, digits, and special characters</string>
+    <string name="confirm_password">Confirm Password</string>
+    <string name="full_name">Full Name</string>
+    <string name="bith_date">Birth Date</string>
+    <string name="first_name">First Name</string>
+    <string name="last_name">Last Name</string>
+    <string name="confirm_password_invalid_format">the passwords are not matching</string>
+    <string name="name_invalid_format">name must include english letters only</string>
+    <string name="birt_date_invalid_format">you must enter a date by the format DD/MM/YYYY</string>
+    <string name="getting_in">getting you in...</string>
+    <string name="register_error">your registretion attempt could not compute</string>
+    <string name="login_error">failed to login</string>
+    <string name="albums_error">couldn\'t get your albums</string>
+    <string name="new_album_error">couldn\'t create your album</string>
+    <string name="settings">settings</string>
+    <string name="about">about</string>
+    <string name="add">add</string>
+    <string name="about_text">this app was created to backup your photos in a server. the app was written for a project of the creator of the app, Tavor Naydits, in 2021.\n\nI hope the app is useful and convenient to your use :)\n</string>
+    <string name="no_settings_text">there are no settings available yet...</string>
+    <string name="sad_face_text">:(</string>
+    <string name="album_name">Album Name</string>
+    <string name="create_album_text">create album</string>
+    <string name="album_name_invalid_format">album name must include english characters, digits, and special characters</string>
+    <string name="photos_error">couldn\'t get your photos</string>
+    <string name="add_photo_text">add photo</string>
+    <string name="upload_photo_error">couldn\'t upload your photo</string>
+    <string name="photo_error">couldn\'t get your photo</string>
+    <string name="lost_connection">lost connection to the server trying to reconnect…</string>
+</resources>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="username">שם משתמש</string>
+    <string name="password">סיסמה</string>
+    <string name="login">התחבר</string>
+    <string name="register">הירשם</string>
+    <string name="username_invalid_format">שם המשתמש חייב להכיל בתוכו אותיות באנגלית ויכול להכיל בתוכו מספרים</string>
+    <string name="password_invalid_format">הסיסמה חייבת להכיל בין 8 ל-16 תווים וחייבת להיות מורכבת מאותיות באנגלית, מספרים ותווים מיוחדים בלבד</string>
+    <string name="confirm_password">אשר סיסמא</string>
+    <string name="full_name">שם מלא</string>
+    <string name="bith_date">תאריך לידה</string>
+    <string name="first_name">שם פרטי</string>
+    <string name="last_name">שם משפחה</string>
+    <string name="confirm_password_invalid_format">הסיסמאות לא מתאימות</string>
+    <string name="name_invalid_format">השם חייב להכיל אותיות באנגלית בלבד</string>
+    <string name="birt_date_invalid_format">עליך להכניס תאריך בפורמט DD/MM/YYYY</string>
+    <string name="getting_in">מתחבר...</string>
+    <string name="register_error">ניסיון ההרשמה שלך לא עבד</string>
+    <string name="login_error">לא הצליח להתחבר</string>
+    <string name="albums_error">לא היה ניתן להשיג את האלבומים שלך</string>
+    <string name="new_album_error">לא היה ניתן ליצור את האלבום</string>
+    <string name="settings">הגדרות</string>
+    <string name="about">אודות</string>
+    <string name="add">הוסף</string>
+    <string name="about_text">האפלקציה הזו נוצרה כדי לגבות תמונות על שרת. האפליקציה נכתבה כפרויקט של יוצר האפליקציה, תבור ניידיץ, בשנה 2021.\n\nאני מקווה שהאפלקציה שימושית ונוחה לשימושכם :)</string>
+    <string name="no_settings_text">אין עוד הגדרות זמינות...</string>
+    <string name="sad_face_text">):</string>
+    <string name="album_name">שם האלבום</string>
+    <string name="create_album_text">צור אלבום</string>
+    <string name="album_name_invalid_format">שם האלבום חייב להיות מורכב מאותיות באנגלית, מספרים ותווים מיוחדים בלבד</string>
+    <string name="photos_error">לא היה ניתן להשיג את התמונות שלך</string>
+    <string name="add_photo_text">הוסף תמונה</string>
+    <string name="upload_photo_error">לא היה ניתן להעלות את התמונה שלך</string>
+    <string name="photo_error">לא היה ניתן להשיג את התמונה שלך</string>
+    <string name="lost_connection">אבד הקשר לשרת מנסה להתחבר…</string>
+</resources>
