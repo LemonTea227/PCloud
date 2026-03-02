@@ -1,1 +1,11 @@
 PCloud Server/log.txt
+
+# IDE
+**/.idea/
+
+# Python cache/artifacts
+**/__pycache__/
+*.py[cod]
+
+# Local runtime data
+PCloud Server/PCloudServerDB.db
