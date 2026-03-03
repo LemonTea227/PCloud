@@ -7,6 +7,7 @@ import static androidx.test.espresso.action.ViewActions.click;
 import static androidx.test.espresso.action.ViewActions.closeSoftKeyboard;
 import static androidx.test.espresso.action.ViewActions.replaceText;
 import static androidx.test.espresso.assertion.ViewAssertions.matches;
+import static androidx.test.espresso.matcher.ViewMatchers.hasDescendant;
 import static androidx.test.espresso.matcher.ViewMatchers.isChecked;
 import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
 import static androidx.test.espresso.matcher.ViewMatchers.withId;
@@ -115,6 +116,7 @@ public class ClientE2ETest {
 
     waitUntil(() -> server.hasUploadedPhoto(albumName, "e2e_image.png"), 8000);
 
+    waitForView(withId(R.id.firstPhotoImageButton), 12000);
     onView(withId(R.id.firstPhotoImageButton)).perform(click());
     waitForView(withId(R.id.photoViewerPhotoView), 8000);
   }
@@ -153,6 +155,45 @@ public class ClientE2ETest {
 
     onView(withId(R.id.keepLoggedInSettingsSwitch)).perform(click());
     onView(withId(R.id.keepLoggedInSettingsSwitch)).check(matches(not(isChecked())));
+  }
+
+  @Test
+  public void e2e_many_albums_navigation_is_smooth() {
+    server.seedManyAlbums(120);
+    launchSplashAndWaitForLogin();
+
+    onView(withId(R.id.usernameLogin)).perform(replaceText("e2elogin"), closeSoftKeyboard());
+    onView(withId(R.id.passwordLogin)).perform(replaceText("Passw0rd!"), closeSoftKeyboard());
+    onView(withId(R.id.loginButtonLogin)).perform(click());
+
+    waitForView(withId(R.id.albumMainRecyclerView), 12000);
+    onView(withId(R.id.albumMainRecyclerView)).perform(RecyclerViewActions.scrollToPosition(119));
+    onView(withId(R.id.albumMainRecyclerView))
+        .perform(RecyclerViewActions.actionOnItemAtPosition(119, click()));
+    waitForView(withId(R.id.photosSecondRecyclerView), 12000);
+  }
+
+  @Test
+  public void e2e_many_large_images_preview_remains_usable() {
+    String heavyAlbum = "heavy_album";
+    server.seedAlbumWithLargePhotos(heavyAlbum, 12, 1400, 1400);
+
+    launchSplashAndWaitForLogin();
+
+    onView(withId(R.id.usernameLogin)).perform(replaceText("e2elogin"), closeSoftKeyboard());
+    onView(withId(R.id.passwordLogin)).perform(replaceText("Passw0rd!"), closeSoftKeyboard());
+    onView(withId(R.id.loginButtonLogin)).perform(click());
+
+    waitForView(withId(R.id.albumMainRecyclerView), 12000);
+    onView(withId(R.id.albumMainRecyclerView))
+        .perform(RecyclerViewActions.scrollTo(hasDescendant(withText(heavyAlbum))));
+    onView(withId(R.id.albumMainRecyclerView))
+        .perform(RecyclerViewActions.actionOnItem(hasDescendant(withText(heavyAlbum)), click()));
+
+    waitForView(withId(R.id.photosSecondRecyclerView), 30000);
+    onView(withId(R.id.photosSecondRecyclerView)).perform(RecyclerViewActions.scrollToPosition(1));
+    onView(withId(R.id.photosSecondRecyclerView)).perform(RecyclerViewActions.scrollToPosition(0));
+    waitForView(withId(R.id.photosSecondRecyclerView), 8000);
   }
 
   private void launchSplashAndWaitForLogin() {

@@ -26,6 +26,7 @@ import java.util.Base64;
 import java.util.Objects;
 
 public class SecondActivity extends AppCompatActivity implements ReceiveMessagesListener {
+  private static final int PREVIEW_MAX_DIMENSION = 320;
   private RecyclerView photosSecondRecyclerView;
   private RecyclerView.Adapter adapter;
   private RecyclerView.LayoutManager layoutManager;
@@ -90,10 +91,35 @@ public class SecondActivity extends AppCompatActivity implements ReceiveMessages
 
   @RequiresApi(api = Build.VERSION_CODES.O)
   private void addPhoto(String message) {
-    String photoName = message.split("~")[0];
-    String photoMessage = message.split("~")[1];
-    byte[] decodedString = Base64.getDecoder().decode(photoMessage);
-    Bitmap decodedPhoto = BitmapFactory.decodeByteArray(decodedString, 0, decodedString.length);
+    String[] parts = message.split("~", 2);
+    if (parts.length < 2) {
+      return;
+    }
+    String photoName = parts[0];
+    Bitmap decodedPhoto = decodePreviewBitmap(parts[1]);
+    if (decodedPhoto != null) {
+      appendPhotoToRows(photoName, decodedPhoto);
+    }
+  }
+
+  @RequiresApi(api = Build.VERSION_CODES.O)
+  private void generatePhotos(String message) {
+    if (message != null && !message.equals("")) {
+      String[] photosMessage = message.split("\n");
+      for (int i = 1; i < photosMessage.length; i++) {
+        String[] parts = photosMessage[i].split("~", 2);
+        if (parts.length < 2) {
+          continue;
+        }
+        Bitmap decodedPreview = decodePreviewBitmap(parts[1]);
+        if (decodedPreview != null) {
+          appendPhotoToRows(parts[0], decodedPreview);
+        }
+      }
+    }
+  }
+
+  private void appendPhotoToRows(String photoName, Bitmap decodedPhoto) {
     if (photos.size() != 0) {
       PhotosItem lastRow = photos.get(photos.size() - 1);
       if (lastRow.getSecondPhotoIcon() == null) {
@@ -119,67 +145,42 @@ public class SecondActivity extends AppCompatActivity implements ReceiveMessages
   }
 
   @RequiresApi(api = Build.VERSION_CODES.O)
-  private void generatePhotos(String message) {
-    if (!message.equals("") && message != null) {
-      String[] photosMessage = message.split("\n");
-      String[] photosNames = new String[photosMessage.length - 1];
-      Bitmap[] decodedPhotos = new Bitmap[photosMessage.length - 1];
-      for (int i = 1; i < photosMessage.length; i++) {
-        photosNames[i - 1] = photosMessage[i].split("~")[0];
-        byte[] decodedString = Base64.getDecoder().decode(photosMessage[i].split("~")[1]);
-        Bitmap decoded = BitmapFactory.decodeByteArray(decodedString, 0, decodedString.length);
-        decodedPhotos[i - 1] = decoded;
-      }
-      for (int i = 0; i < decodedPhotos.length - 4; i += 4) {
-        photos.add(
-            new PhotosItem(
-                photosNames[i],
-                decodedPhotos[i],
-                photosNames[i + 1],
-                decodedPhotos[i + 1],
-                photosNames[i + 2],
-                decodedPhotos[i + 2],
-                photosNames[i + 3],
-                decodedPhotos[i + 3]));
-        adapter.notifyItemInserted(0);
-      }
-      if (decodedPhotos.length % 4 == 1) {
-        photos.add(
-            new PhotosItem(
-                photosNames[decodedPhotos.length - 1], decodedPhotos[decodedPhotos.length - 1]));
-        adapter.notifyItemInserted(0);
-      } else if (decodedPhotos.length % 4 == 2) {
-        photos.add(
-            new PhotosItem(
-                photosNames[decodedPhotos.length - 2],
-                decodedPhotos[decodedPhotos.length - 2],
-                photosNames[decodedPhotos.length - 1],
-                decodedPhotos[decodedPhotos.length - 1]));
-        adapter.notifyItemInserted(0);
-      } else if (decodedPhotos.length % 4 == 3) {
-        photos.add(
-            new PhotosItem(
-                photosNames[decodedPhotos.length - 3],
-                decodedPhotos[decodedPhotos.length - 3],
-                photosNames[decodedPhotos.length - 2],
-                decodedPhotos[decodedPhotos.length - 2],
-                photosNames[decodedPhotos.length - 1],
-                decodedPhotos[decodedPhotos.length - 1]));
-        adapter.notifyItemInserted(0);
-      } else if (decodedPhotos.length % 4 == 0 && decodedPhotos.length >= 4) {
-        photos.add(
-            new PhotosItem(
-                photosNames[decodedPhotos.length - 4],
-                decodedPhotos[decodedPhotos.length - 4],
-                photosNames[decodedPhotos.length - 3],
-                decodedPhotos[decodedPhotos.length - 3],
-                photosNames[decodedPhotos.length - 2],
-                decodedPhotos[decodedPhotos.length - 2],
-                photosNames[decodedPhotos.length - 1],
-                decodedPhotos[decodedPhotos.length - 1]));
-        adapter.notifyItemInserted(0);
+  private Bitmap decodePreviewBitmap(String photoMessage) {
+    try {
+      byte[] decodedString = Base64.getDecoder().decode(photoMessage);
+      return decodeSampledBitmapFromBytes(
+          decodedString, PREVIEW_MAX_DIMENSION, PREVIEW_MAX_DIMENSION);
+    } catch (IllegalArgumentException ignored) {
+      return null;
+    }
+  }
+
+  private Bitmap decodeSampledBitmapFromBytes(byte[] imageData, int reqWidth, int reqHeight) {
+    BitmapFactory.Options boundsOptions = new BitmapFactory.Options();
+    boundsOptions.inJustDecodeBounds = true;
+    BitmapFactory.decodeByteArray(imageData, 0, imageData.length, boundsOptions);
+
+    BitmapFactory.Options decodeOptions = new BitmapFactory.Options();
+    decodeOptions.inSampleSize = calculateInSampleSize(boundsOptions, reqWidth, reqHeight);
+    decodeOptions.inPreferredConfig = Bitmap.Config.RGB_565;
+    return BitmapFactory.decodeByteArray(imageData, 0, imageData.length, decodeOptions);
+  }
+
+  private int calculateInSampleSize(BitmapFactory.Options options, int reqWidth, int reqHeight) {
+    int height = options.outHeight;
+    int width = options.outWidth;
+    int inSampleSize = 1;
+
+    if (height > reqHeight || width > reqWidth) {
+      int halfHeight = height / 2;
+      int halfWidth = width / 2;
+
+      while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
+        inSampleSize *= 2;
       }
     }
+
+    return Math.max(1, inSampleSize);
   }
 
   public boolean onPrepareOptionsMenu(Menu menu) {

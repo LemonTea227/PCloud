@@ -51,11 +51,23 @@ class ReceiveMessagesThread implements Runnable {
             }
 
             // check if the size of the received data (length) equals to size value (size)
-            String[] sp_mes = m.split("\n\ndata:");
             if (size < 0) {
-              size = Integer.parseInt(sp_mes[0].split("\n")[2].substring(5));
+              if (!m.contains("\n\n")) {
+                continue;
+              }
+              String[] headerAndRest = m.split("\n\n", 2);
+              String[] headerLines = headerAndRest[0].split("\n");
+              if (headerLines.length < 3 || !headerLines[2].startsWith("size:")) {
+                continue;
+              }
+              try {
+                size = Integer.parseInt(headerLines[2].substring(5));
+              } catch (NumberFormatException ignored) {
+                continue;
+              }
             }
             if (m.contains("\n\n")) {
+              String[] sp_mes = m.split("\n\ndata:", -1);
               d = "";
               for (int i = 1; i < sp_mes.length; i++) {
                 d += sp_mes[i] + "\n\n";
@@ -70,7 +82,7 @@ class ReceiveMessagesThread implements Runnable {
             continue;
           }
         }
-        if (length > size) {
+        if (size >= 0 && length > size) {
           MySocket.setExtraMessage(d.substring(size, length)); // optional error
           m = m.substring(0, m.length() - (length - size));
         } else {

@@ -1,5 +1,6 @@
 package com.example.pcloud;
 
+import android.graphics.Bitmap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -75,6 +76,31 @@ class MockPCloudServer {
   boolean hasUploadedPhoto(String albumName, String photoName) {
     LinkedHashMap<String, String> photos = albums.get(albumName);
     return photos != null && photos.containsKey(photoName);
+  }
+
+  void seedManyAlbums(int count) {
+    for (int i = 0; i < count; i++) {
+      String albumName = String.format("album_%03d", i);
+      albums.put(albumName, new LinkedHashMap<>());
+    }
+  }
+
+  void seedAlbumWithLargePhotos(String albumName, int photoCount, int width, int height) {
+    LinkedHashMap<String, String> photos = new LinkedHashMap<>();
+    String encodedImage = createLargeEncodedImage(width, height);
+    for (int i = 0; i < photoCount; i++) {
+      String fileName = String.format("large_%03d.jpg", i);
+      photos.put(fileName, encodedImage);
+    }
+    albums.put(albumName, photos);
+  }
+
+  private String createLargeEncodedImage(int width, int height) {
+    Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+    bitmap.eraseColor(0xFF5E8BFF);
+    ByteArrayOutputStream stream = new ByteArrayOutputStream();
+    bitmap.compress(Bitmap.CompressFormat.JPEG, 92, stream);
+    return android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP);
   }
 
   private void handleClient(Socket client) {
