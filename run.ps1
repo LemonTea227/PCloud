@@ -90,9 +90,123 @@ function Test-AndroidSdk([string]$clientPath) {
     return (Test-Path $sdkPath)
 }
 
+function Get-AdbPath {
+    $adbCmd = Get-Command adb -ErrorAction SilentlyContinue
+    if ($adbCmd) {
+        return $adbCmd.Source
+    }
+
+    $sdkCandidates = @()
+    if ($env:ANDROID_SDK_ROOT) {
+        $sdkCandidates += $env:ANDROID_SDK_ROOT
+    }
+    $sdkCandidates += (Join-Path $env:LOCALAPPDATA "Android\Sdk")
+
+    foreach ($sdk in $sdkCandidates) {
+        if (-not $sdk) { continue }
+        $adbPath = Join-Path $sdk "platform-tools\adb.exe"
+        if (Test-Path $adbPath) {
+            return $adbPath
+        }
+    }
+
+    return $null
+}
+
+function Wait-ForAndroidBoot([string]$adbPath, [int]$timeoutSeconds = 120) {
+    if (-not $adbPath) {
+        return $false
+    }
+
+    try {
+        & $adbPath wait-for-device | Out-Null
+    } catch {
+        Start-Sleep -Seconds 2
+    }
+    $attempts = [Math]::Ceiling($timeoutSeconds / 2)
+    for ($i = 0; $i -lt $attempts; $i++) {
+        try {
+            $boot = (& $adbPath shell getprop sys.boot_completed 2>$null).Trim()
+        } catch {
+            Start-Sleep -Seconds 2
+            continue
+        }
+        if ($boot -eq "1") {
+            return $true
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    return $false
+}
+
+function Get-EmulatorPath {
+    $emuCmd = Get-Command emulator -ErrorAction SilentlyContinue
+    if ($emuCmd) {
+        return $emuCmd.Source
+    }
+
+    $sdkCandidates = @()
+    if ($env:ANDROID_SDK_ROOT) {
+        $sdkCandidates += $env:ANDROID_SDK_ROOT
+    }
+    $sdkCandidates += (Join-Path $env:LOCALAPPDATA "Android\Sdk")
+
+    foreach ($sdk in $sdkCandidates) {
+        if (-not $sdk) { continue }
+        $emuPath = Join-Path $sdk "emulator\emulator.exe"
+        if (Test-Path $emuPath) {
+            return $emuPath
+        }
+    }
+
+    return $null
+}
+
+function Get-ConnectedDeviceCount([string]$adbPath) {
+    if (-not $adbPath) { return 0 }
+    $lines = & $adbPath devices
+    return @($lines | Select-String -Pattern "\tdevice$").Count
+}
+
+function Ensure-ClientDevice([string]$adbPath) {
+    if (-not $adbPath) {
+        return $false
+    }
+
+    if ((Get-ConnectedDeviceCount -adbPath $adbPath) -gt 0) {
+        return $true
+    }
+
+    $emulatorPath = Get-EmulatorPath
+    if (-not $emulatorPath) {
+        return $false
+    }
+
+    $avds = & $emulatorPath -list-avds 2>$null
+    if (-not $avds -or $avds.Count -eq 0) {
+        return $false
+    }
+
+    $selectedAvd = $avds | Select-Object -First 1
+    Write-Host "No connected phone detected. Starting emulator '$selectedAvd'..."
+
+    $emuDir = Split-Path -Parent $emulatorPath
+    Push-Location $emuDir
+    try {
+        Start-Process -FilePath $emulatorPath -ArgumentList "-avd", $selectedAvd | Out-Null
+    } finally {
+        Pop-Location
+    }
+
+    & $adbPath start-server | Out-Null
+    return (Wait-ForAndroidBoot -adbPath $adbPath -timeoutSeconds 240)
+}
+
 Write-Host "[1/4] Validating prerequisites..."
 Ensure-Command py
 Ensure-Command java
+$adbPath = Get-AdbPath
 
 Write-Host "[2/4] Starting server..."
 $serverProcess = Start-Process -FilePath "py" -ArgumentList "-2", "pcloud_server.py" -WorkingDirectory $serverDir -PassThru
@@ -124,27 +238,40 @@ try {
 
     Push-Location $clientDir
     try {
+        $deviceReady = Ensure-ClientDevice -adbPath $adbPath
+
         if (-not $SkipInstall) {
-            if (Get-Command adb -ErrorAction SilentlyContinue) {
-                $adbDevices = adb devices | Select-String -Pattern "\tdevice$"
-                if ($adbDevices) {
-                    .\gradlew.bat installDebug
+            if ($adbPath) {
+                if ($deviceReady) {
+                    if (Wait-ForAndroidBoot -adbPath $adbPath) {
+                        .\gradlew.bat installDebug
+                    } else {
+                        .\gradlew.bat assembleDebug
+                        Write-Host "Device detected but not fully booted. Built debug APK instead of installing."
+                    }
                 } else {
                     .\gradlew.bat assembleDebug
-                    Write-Host "No connected device/emulator detected. Built debug APK instead of installing."
+                    Write-Host "No connected phone/emulator available. Built debug APK instead of installing."
                 }
             } else {
                 .\gradlew.bat assembleDebug
                 Write-Host "adb not found; built debug APK instead of installing."
             }
         }
-        if (Get-Command adb -ErrorAction SilentlyContinue) {
-            $adbDevices = adb devices | Select-String -Pattern "\tdevice$"
-            if ($adbDevices) {
-                adb shell am start -n com.example.pcloud/.SplashActivity | Out-Null
-                Write-Host "Client launched via adb."
+        if ($adbPath) {
+            if ($deviceReady -or (Get-ConnectedDeviceCount -adbPath $adbPath) -gt 0) {
+                if (Wait-ForAndroidBoot -adbPath $adbPath) {
+                    & $adbPath shell am start -n com.example.pcloud/.SplashActivity | Out-Null
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host "Client launched via adb."
+                    } else {
+                        Write-Host "Launch command failed. Open the app manually on the emulator."
+                    }
+                } else {
+                    Write-Host "Device not fully booted; launch the app manually when boot completes."
+                }
             } else {
-                Write-Host "No connected device/emulator; launch APK manually after connecting a device."
+                Write-Host "No connected phone/emulator; launch APK manually after connecting a device."
             }
         } else {
             Write-Host "adb not found; launch the app manually after installing APK on a device/emulator."
