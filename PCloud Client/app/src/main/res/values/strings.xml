@@ -34,4 +34,7 @@
     <string name="upload_photo_error">couldn\'t upload your photo</string>
     <string name="photo_error">couldn\'t get your photo</string>
     <string name="lost_connection">lost connection to the server trying to reconnect…</string>
+    <string name="keep_me_logged_in">Keep me logged in</string>
+    <string name="client_log_path">Client log file</string>
+    <string name="client_log_path_value">Client log file: %1$s</string>
 </resources>

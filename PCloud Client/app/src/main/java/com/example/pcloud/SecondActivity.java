@@ -20,6 +20,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Objects;
@@ -215,19 +216,38 @@ public class SecondActivity extends AppCompatActivity implements ReceiveMessages
     new Thread(new ReceiveMessagesThread()).start();
     if (requestCode == RESULT_LOAD_IMAGE && resultCode == RESULT_OK && data != null) {
       android.net.Uri selectedImage = data.getData();
+      if (selectedImage == null) {
+        return;
+      }
       nameOfFile = getFileName(selectedImage);
-      String[] mimeTypeSplit = getContentResolver().getType(selectedImage).split("/");
+      String contentType = getContentResolver().getType(selectedImage);
+      if (contentType == null) {
+        contentType = "image/png";
+      }
+      String[] mimeTypeSplit = contentType.split("/");
       mimeType = mimeTypeSplit[mimeTypeSplit.length - 1];
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
       Bitmap imageToUpload = null;
       try {
-        imageToUpload = MediaStore.Images.Media.getBitmap(this.getContentResolver(), selectedImage);
+        InputStream stream = getContentResolver().openInputStream(selectedImage);
+        if (stream != null) {
+          try {
+            imageToUpload = BitmapFactory.decodeStream(stream);
+          } finally {
+            stream.close();
+          }
+        }
       } catch (IOException e) {
         e.printStackTrace();
       }
+      if (imageToUpload == null) {
+        Toast.makeText(getApplicationContext(), getString(R.string.upload_photo_error), Toast.LENGTH_SHORT)
+            .show();
+        return;
+      }
       if (mimeType.equals("jpeg") || mimeType.equals("jpg")) {
         imageToUpload.compress(Bitmap.CompressFormat.JPEG, 100, byteArrayOutputStream);
-      } else if (mimeType.equals("png")) {
+      } else {
         imageToUpload.compress(Bitmap.CompressFormat.PNG, 100, byteArrayOutputStream);
       }
       String encodedImage =

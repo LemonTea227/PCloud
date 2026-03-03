@@ -1,6 +1,7 @@
 import socket
 import threading
 from datetime import datetime
+import sqlite3
 
 import pcloud_server_db
 from pcloud_protocol import (
@@ -15,6 +16,7 @@ from os import listdir
 from os.path import isfile, join
 import base64
 import hashlib
+from diffie_hellman import diffie_hellman_server
 
 IP = "0.0.0.0"
 PORT = 22703
@@ -38,9 +40,7 @@ USER_KIND = 1
 ALBUM_KIND = 2
 PHOTO_KIND = 3
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-USER_ID_FILE = os.path.join(BASE_DIR, "user_id.txt")
-ALBUM_ID_FILE = os.path.join(BASE_DIR, "album_id.txt")
-PHOTO_ID_FILE = os.path.join(BASE_DIR, "photo_id.txt")
+DB_FILE = os.path.join(BASE_DIR, "PCloudServerDB.db")
 
 PATH_TO_FILES = os.path.join(BASE_DIR, "proj_files")
 
@@ -63,7 +63,7 @@ def main():
                 "(%s) connected to: SOCKET-%s : ADDRESS-%s"
                 % (datetime.now(), client_socket, address)
             )
-            client_socket.settimeout(0.1)
+            client_socket.settimeout(1.0)
             SEND[client_socket] = []
             t = threading.Thread(target=async_send_receive, args=(client_socket,))
             t.daemon = True
@@ -83,19 +83,23 @@ def generate_id(kind):
     :param kind: the db id you want
     :return: an available id by kind
     """
-    needed_id = ""
-    file_wanted = ""
     if kind == USER_KIND:
-        file_wanted = USER_ID_FILE
+        table_name = "users"
     elif kind == ALBUM_KIND:
-        file_wanted = ALBUM_ID_FILE
+        table_name = "albums"
     else:
-        file_wanted = PHOTO_ID_FILE
-    with open(file_wanted, "r") as f:
-        needed_id = f.read()
-    with open(file_wanted, "w") as f:
-        f.write(str(int(needed_id) + 1))
-    return needed_id
+        table_name = "photos"
+
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT MAX(id) FROM %s" % table_name)
+        max_id = cursor.fetchone()[0]
+        if max_id is None:
+            return "1"
+        return str(int(max_id) + 1)
+    finally:
+        conn.close()
 
 
 def naming(name, names):
@@ -219,16 +223,14 @@ def generate_photos_from_album(sock, album_name):
     :param album_name: the name of the album we need
     :return: message of photos
     """
-    path = PATH_TO_FILES
-    path += "\\" + USERS[sock].username
-    path += "\\" + album_name + "\\"
-    onlyfiles = [f for f in listdir(path) if isfile(join(path, f))]
     lst_encode = []
-    for file_path in onlyfiles:
-        img = ""
-        with open(path + file_path, "rb") as f:
-            img = f.read()
-        lst_encode.append(file_path + "~" + base64.b64encode(img))
+    photos = USERS[sock].get_photos_data_in_album(album_name)
+    for photo in photos:
+        file_name = photo[3]
+        file_data = photo[5] if len(photo) > 5 else ""
+        if file_data is None:
+            file_data = ""
+        lst_encode.append(file_name + "~" + str(file_data))
     return "\n".join(lst_encode)
 
 
@@ -240,13 +242,10 @@ def get_encoded_photo(sock, album_name, file_name):
     :param file_name:
     :return: encoded photo
     """
-    path = PATH_TO_FILES
-    path += "\\" + USERS[sock].username
-    path += "\\" + album_name + "\\" + file_name
-    img = ""
-    with open(path, "rb") as f:
-        img = f.read()
-    return base64.b64encode(img)
+    photo_data = USERS[sock].get_photo_data_in_album(album_name, file_name)
+    if photo_data is None:
+        return ""
+    return str(photo_data)
 
 
 def async_send_receive(sock):
@@ -297,24 +296,23 @@ def async_send_receive(sock):
     #     except exceptions.Exception:
     #         break
 
+    aes_key = diffie_hellman_server(sock)
+    if not aes_key:
+        try:
+            sock.close()
+        except Exception:
+            pass
+        return
+
     while True:
         try:
             try:
                 if SEND[sock]:
-                    # if aes_key:
-                    #     send_by_protocol(sock, SEND[sock].pop(0), aes_key=aes_key)
-                    # else:
                     send_by_protocol(sock, SEND[sock].pop(0))
-                # if aes_key:
-                #     data = recv_by_protocol(sock, aes_key)
-                # else:
-                data = recv_by_protocol(sock)
+                data = recv_by_protocol(sock, aes_key=aes_key)
                 if not data:
                     raise socket.error
-                # if aes_key:
-                #     receive_handler(sock, data, aes_key=aes_key)
-                # else:
-                receive_handler(sock, data)
+                receive_handler(sock, data, aes_key=aes_key)
 
             except socket.timeout:
                 continue
@@ -325,13 +323,6 @@ def async_send_receive(sock):
                 continue
             print("disconnecting user")
             break
-
-
-def upload_photo(sock, album_name, file_name, file_data):
-    with open(
-        PATH_TO_FILES + "\\" + USERS[sock].username + "\\" + album_name + "\\" + file_name, "wb"
-    ) as f:
-        f.write(file_data)
 
 
 def receive_handler(sock, recv, aes_key=None):
@@ -348,9 +339,15 @@ def receive_handler(sock, recv, aes_key=None):
             user = pcloud_server_db.User()
             if user.login(get_data_from_message(recv).split("\n")[0], h.hexdigest()):
                 USERS[sock] = user
-                SEND[sock].append(build_message(get_header_from_message(recv, "name"), CONFIRM))
+                SEND[sock].append(
+                    build_message(get_header_from_message(recv, "name"), CONFIRM, aes_key=aes_key)
+                )
             else:
-                SEND[sock].append(build_message(get_header_from_message(recv, "name"), LOGIN_ERROR))
+                SEND[sock].append(
+                    build_message(
+                        get_header_from_message(recv, "name"), LOGIN_ERROR, aes_key=aes_key
+                    )
+                )
         elif get_header_from_message(recv, "name").upper() == "REGISTER":
             h = hashlib.sha256()
             h.update(get_data_from_message(recv).split("\n")[1])
@@ -363,10 +360,14 @@ def receive_handler(sock, recv, aes_key=None):
                 get_data_from_message(recv).split("\n")[3],
             ):
                 USERS[sock] = user
-                SEND[sock].append(build_message(get_header_from_message(recv, "name"), CONFIRM))
+                SEND[sock].append(
+                    build_message(get_header_from_message(recv, "name"), CONFIRM, aes_key=aes_key)
+                )
             else:
                 SEND[sock].append(
-                    build_message(get_header_from_message(recv, "name"), REGISTER_ERROR)
+                    build_message(
+                        get_header_from_message(recv, "name"), REGISTER_ERROR, aes_key=aes_key
+                    )
                 )
         elif get_header_from_message(recv, "name").upper() == "ALBUMS":
             data = "\n".join(get_albums_names(sock))
@@ -383,10 +384,14 @@ def receive_handler(sock, recv, aes_key=None):
                 album_id = generate_id(ALBUM_KIND)
                 album.new_album(album_id, USERS[sock].user_id, unique_name)
                 make_album_directory(sock, album.album_name)
-                SEND[sock].append(build_message(get_header_from_message(recv, "name"), CONFIRM))
+                SEND[sock].append(
+                    build_message(get_header_from_message(recv, "name"), CONFIRM, aes_key=aes_key)
+                )
             except IOError:
                 SEND[sock].append(
-                    build_message(get_header_from_message(recv, "name"), NEW_ALBUM_ERROR)
+                    build_message(
+                        get_header_from_message(recv, "name"), NEW_ALBUM_ERROR, aes_key=aes_key
+                    )
                 )
         elif get_header_from_message(recv, "name").upper() == "DEL_ALBUMS":
             try:
@@ -397,10 +402,16 @@ def receive_handler(sock, recv, aes_key=None):
                     album.creator_id = USERS[sock].user_id
                     del_album_directory(sock, album.album_name)
                     album.del_album()
-                    SEND[sock].append(build_message(get_header_from_message(recv, "name"), CONFIRM))
+                    SEND[sock].append(
+                        build_message(
+                            get_header_from_message(recv, "name"), CONFIRM, aes_key=aes_key
+                        )
+                    )
             except IOError:
                 SEND[sock].append(
-                    build_message(get_header_from_message(recv, "name"), DEL_ALBUMS_ERROR)
+                    build_message(
+                        get_header_from_message(recv, "name"), DEL_ALBUMS_ERROR, aes_key=aes_key
+                    )
                 )
         elif get_header_from_message(recv, "name").upper() == "PHOTOS":
             try:
@@ -414,28 +425,19 @@ def receive_handler(sock, recv, aes_key=None):
                 )
             except IOError:
                 SEND[sock].append(
-                    build_message(get_header_from_message(recv, "name"), PHOTOS_ERROR)
+                    build_message(
+                        get_header_from_message(recv, "name"), PHOTOS_ERROR, aes_key=aes_key
+                    )
                 )
         elif get_header_from_message(recv, "name").upper() == "UPLOAD_PHOTO":
             album_name = get_data_from_message(recv).split("\n")[0]
             album_id = USERS[sock].get_album_id_by_album_name(album_name)
             file_names = get_photos_names(sock, album_name)
             file_name = naming(get_data_from_message(recv).split("\n")[1], file_names)
-            file_data = base64.b64decode(get_data_from_message(recv).split("\n")[2])
+            file_data = get_data_from_message(recv).split("\n")[2]
             photo_id = generate_id(PHOTO_KIND)
-            t_upload_to_file = threading.Thread(
-                target=upload_photo,
-                args=(
-                    sock,
-                    album_name,
-                    file_name,
-                    file_data,
-                ),
-            )
-            t_upload_to_file.start()
-            THREAD.append(t_upload_to_file)
             photo = pcloud_server_db.Photo()
-            photo.new_photo(photo_id, album_id, USERS[sock].user_id, file_name)
+            photo.new_photo(photo_id, album_id, USERS[sock].user_id, file_name, file_data)
             try:
                 SEND[sock].append(
                     build_message(
@@ -447,7 +449,9 @@ def receive_handler(sock, recv, aes_key=None):
                 )
             except IOError:
                 SEND[sock].append(
-                    build_message(get_header_from_message(recv, "name"), UPLOAD_PHOTO_ERROR)
+                    build_message(
+                        get_header_from_message(recv, "name"), UPLOAD_PHOTO_ERROR, aes_key=aes_key
+                    )
                 )
         elif get_header_from_message(recv, "name").upper() == "PHOTO":
             try:
@@ -464,7 +468,9 @@ def receive_handler(sock, recv, aes_key=None):
                 )
             except IOError:
                 SEND[sock].append(
-                    build_message(get_header_from_message(recv, "name"), CONFIRM, PHOTO_ERROR)
+                    build_message(
+                        get_header_from_message(recv, "name"), CONFIRM, PHOTO_ERROR, aes_key=aes_key
+                    )
                 )
 
 

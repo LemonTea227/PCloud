@@ -51,6 +51,10 @@ class UserAlbumPhotoORM(object):
         self.current.execute(self.create_users_DB())
         self.current.execute(self.create_albums_DB())
         self.current.execute(self.create_photos_DB())
+        try:
+            self.current.execute("ALTER TABLE photos ADD COLUMN file_data TEXT")
+        except sqlite3.OperationalError:
+            pass
         self.commit()
 
     def close_DB(self):
@@ -283,13 +287,14 @@ class UserAlbumPhotoORM(object):
         """
         return create_db(
             "photos",
-            ["id", "album_id", "creator_id", "file_name", "creating_time"],
+            ["id", "album_id", "creator_id", "file_name", "creating_time", "file_data"],
             [
                 "INTEGER PRIMARY KEY",
                 "INTEGER NOT NULL",
                 "INTEGER NOT NULL",
                 "TEXT NOT NULL",
                 "TEXT NOT NULL",
+                "TEXT",
             ],
             [
                 "FOREIGN KEY (album_id) REFERENCES albums (id)",
@@ -341,28 +346,43 @@ class Photo(object):
     """
 
     def __init__(
-        self, photo_id=None, album_id=None, creator_id=None, creating_time=None, file_name=None
+        self,
+        photo_id=None,
+        album_id=None,
+        creator_id=None,
+        creating_time=None,
+        file_name=None,
+        file_data=None,
     ):
         self.photo_id = photo_id
         self.album_id = album_id
         self.creator_id = creator_id
         self.creating_time = creating_time
         self.file_name = file_name
+        self.file_data = file_data
         self.db = UserAlbumPhotoORM()
 
-    def new_photo(self, photo_id, album_id, creator_id, file_name):
+    def new_photo(self, photo_id, album_id, creator_id, file_name, file_data):
         self.photo_id = photo_id
         self.album_id = album_id
         self.creator_id = creator_id
         self.creating_time = datetime.datetime.now()
         self.file_name = file_name
+        self.file_data = file_data
         self.db = UserAlbumPhotoORM()
 
         # insert into the database
         self.db.insert_DB(
             "photos",
-            ["id", "album_id", "creator_id", "creating_time", "file_name"],
-            [self.photo_id, self.album_id, self.creator_id, self.creating_time, self.file_name],
+            ["id", "album_id", "creator_id", "creating_time", "file_name", "file_data"],
+            [
+                self.photo_id,
+                self.album_id,
+                self.creator_id,
+                self.creating_time,
+                self.file_name,
+                self.file_data,
+            ],
         )
 
     def del_photo(self):
@@ -510,6 +530,17 @@ class User(object):
     def get_photos_in_album(self, album_name):
         album_id = self.get_album_id_by_album_name(album_name)
         return self.db.get_all_rows_DB("photos", ["album_id"], [album_id])
+
+    def get_photos_data_in_album(self, album_name):
+        album_id = self.get_album_id_by_album_name(album_name)
+        return self.db.get_all_rows_DB("photos", ["album_id"], [album_id])
+
+    def get_photo_data_in_album(self, album_name, file_name):
+        album_id = self.get_album_id_by_album_name(album_name)
+        row = self.db.get_row_DB("photos", ["album_id", "file_name"], [album_id, file_name])
+        if row and len(row) > 5:
+            return row[5]
+        return None
 
     def get_album_id_by_album_name(self, album_name):
         return self.db.get_row_DB("albums", ["album_name"], [album_name])[0]

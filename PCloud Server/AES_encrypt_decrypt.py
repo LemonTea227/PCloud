@@ -1,6 +1,7 @@
 # flake8: noqa
 
 from base64 import b64decode, b64encode
+import sys
 
 try:
     xrange
@@ -1038,7 +1039,7 @@ if __name__ == "__main__":
     edata = encrypt(dta, ky)
     print("encrypted data: " + edata)
     for c in edata:
-        print(ord(c), end=" ")
-    print()
+        sys.stdout.write(str(ord(c)) + " ")
+    sys.stdout.write("\n")
     ddata = decrypt(edata, ky)
     print("decrypted data: " + ddata)

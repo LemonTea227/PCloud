@@ -188,7 +188,26 @@ function Ensure-ClientDevice([string]$adbPath) {
         return $false
     }
 
-    $selectedAvd = $avds | Select-Object -First 1
+    $preferredPatterns = @(
+        "Pixel_8_Pro",
+        "Pixel_8",
+        "Pixel_7_Pro",
+        "Pixel_7",
+        "Pixel_6_Pro",
+        "Pixel_6",
+        "Pixel_5",
+        "Pixel_4_XL"
+    )
+    $selectedAvd = $null
+    foreach ($pattern in $preferredPatterns) {
+        $selectedAvd = $avds | Where-Object { $_ -like "*$pattern*" } | Select-Object -First 1
+        if ($selectedAvd) {
+            break
+        }
+    }
+    if (-not $selectedAvd) {
+        $selectedAvd = $avds | Select-Object -First 1
+    }
     Write-Host "No connected phone detected. Starting emulator '$selectedAvd'..."
 
     $emuDir = Split-Path -Parent $emulatorPath

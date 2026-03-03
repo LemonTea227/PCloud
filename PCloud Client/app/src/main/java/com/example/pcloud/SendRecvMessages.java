@@ -2,6 +2,7 @@ package com.example.pcloud;
 
 import android.app.Activity;
 import android.content.Intent;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 
@@ -19,8 +20,19 @@ class ReceiveMessagesThread implements Runnable {
 
   @Override
   public void run() {
+    ClientLogger.log(
+        "ReceiveMessagesThread",
+        "Receiver loop started for " + activity.getClass().getSimpleName());
     while (!MySocket.isClosed()) {
       try {
+        BufferedReader input = MySocket.getInput();
+        if (input == null) {
+          try {
+            Thread.sleep(50);
+          } catch (InterruptedException ignored) {
+          }
+          continue;
+        }
         String m = MySocket.getExtraMessage();
         String d = "";
         int size = -1;
@@ -30,7 +42,7 @@ class ReceiveMessagesThread implements Runnable {
         while (!m.contains("\n\n") || length < size) {
           try {
             if (m.equals("") || !m.contains("\n\n") || (length < size && size != -1)) {
-              int charsRead = MySocket.getInput().read(buffer);
+              int charsRead = input.read(buffer);
               if (charsRead == -1) continue;
               m += new String(buffer).substring(0, charsRead);
             }
@@ -68,6 +80,7 @@ class ReceiveMessagesThread implements Runnable {
         final String message = m;
 
         if (!message.equals("")) {
+          ClientLogger.log("ReceiveMessagesThread", "Received message bytes=" + message.length());
 
           activity.runOnUiThread(
               new Runnable() {
@@ -81,6 +94,7 @@ class ReceiveMessagesThread implements Runnable {
           throw new IOException();
         }
       } catch (IOException e) {
+        ClientLogger.logError("ReceiveMessagesThread", "Connection lost while receiving", e);
         MySocket.setSocket(null);
         MySocket.setInput(null);
         MySocket.setOutput(null);
@@ -119,6 +133,11 @@ class SendMessagesThread implements Runnable {
 
   @Override
   public void run() {
+    ClientLogger.log("SendMessagesThread", "Sending message bytes=" + message.length());
+    if (MySocket.getOutput() == null) {
+      ClientLogger.logError("SendMessagesThread", "Output stream is null; dropping message", null);
+      return;
+    }
     MySocket.getOutput().write(message);
     MySocket.getOutput().flush();
   }

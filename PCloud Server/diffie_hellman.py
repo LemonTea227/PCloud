@@ -1,3 +1,5 @@
+import socket
+import time
 from random import randint, getrandbits
 
 from pcloud_protocol import (
@@ -10,6 +12,14 @@ from pcloud_protocol import (
 
 REQUEST = "0"
 CONFIRM = "1"
+
+
+def _to_16_byte_key(num):
+    key_bytes = ["\x00"] * 16
+    for i in range(15, -1, -1):
+        key_bytes[i] = chr(int(num % 256))
+        num /= 256
+    return "".join(key_bytes)
 
 
 def diffie_hellman_server(sock):
@@ -26,7 +36,13 @@ def diffie_hellman_server(sock):
     my_num = randint(1, 20302)
 
     score = str((G**my_num) % P)
-    mes = recv_by_protocol(sock)
+    deadline = time.time() + 10.0
+    mes = ""
+    while not mes and time.time() < deadline:
+        try:
+            mes = recv_by_protocol(sock)
+        except socket.timeout:
+            continue
     if mes == "":
         sock.close()
         return
@@ -35,11 +51,7 @@ def diffie_hellman_server(sock):
     send_by_protocol(sock, build_message("SCORE", CONFIRM, score))
 
     aes_key_num = (other_score**my_num) % P
-    aes_key_str = ""
-    while aes_key_num != 0:
-        aes_key_str = chr(aes_key_num % 256) + aes_key_str
-        aes_key_num /= 256
-    return aes_key_str
+    return _to_16_byte_key(aes_key_num)
 
 
 def diffie_hellman_client(sock):
@@ -60,11 +72,7 @@ def diffie_hellman_client(sock):
     other_score = long(mes[-1])
 
     aes_key_num = (other_score**my_num) % P
-    aes_key_str = ""
-    while aes_key_num != 0:
-        aes_key_str = chr(aes_key_num % 256) + aes_key_str
-        aes_key_num /= 256
-    return aes_key_str
+    return _to_16_byte_key(aes_key_num)
 
 
 if __name__ == "__main__":

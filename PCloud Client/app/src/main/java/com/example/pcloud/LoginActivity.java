@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.textfield.TextInputEditText;
@@ -16,11 +17,16 @@ public class LoginActivity extends AppCompatActivity implements ReceiveMessagesL
   TextInputLayout usernameLoginLayout, passwordLoginLayout;
   TextInputEditText usernameLogin, passwordLogin;
   Button loginButtonLogin, registerButtonLogin;
+  CheckBox rememberMeCheckBox;
+  private boolean pendingRememberChoice;
+  private String pendingUsername;
+  private String pendingPassword;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_login);
+    ClientLogger.init(getApplicationContext());
 
     ReceiveMessagesThread.setActivity(this);
     ReceiveMessagesThread.setListener(LoginActivity.this);
@@ -33,6 +39,9 @@ public class LoginActivity extends AppCompatActivity implements ReceiveMessagesL
     passwordLogin = findViewById(R.id.passwordLogin);
     loginButtonLogin = findViewById(R.id.loginButtonLogin);
     registerButtonLogin = findViewById(R.id.registerButtonLogin);
+    rememberMeCheckBox = findViewById(R.id.rememberMeLoginCheckBox);
+
+    rememberMeCheckBox.setChecked(SessionPrefs.shouldKeepLoggedIn(this));
 
     if (getIntent().hasExtra("username")) {
       usernameLogin.setText(getIntent().getExtras().getString("username"));
@@ -69,6 +78,10 @@ public class LoginActivity extends AppCompatActivity implements ReceiveMessagesL
           }
 
           if (usernameLoginLayout.getError() == null && passwordLoginLayout.getError() == null) {
+            pendingUsername = usernameLogin.getText().toString();
+            pendingPassword = passwordLogin.getText().toString();
+            pendingRememberChoice = rememberMeCheckBox.isChecked();
+            ClientLogger.log("LoginActivity", "Sending LOGIN request for user=" + pendingUsername);
             //                Toast.makeText(getApplicationContext(), "sucsses",
             // Toast.LENGTH_SHORT).show();
             new Thread(
@@ -124,8 +137,16 @@ public class LoginActivity extends AppCompatActivity implements ReceiveMessagesL
     HandelMessage message = new HandelMessage(mes);
     if (message.getName().equals("LOGIN")) {
       if (message.getType().equals(MessageCodes.getConfirm())) {
+        SessionPrefs.setKeepLoggedIn(this, pendingRememberChoice);
+        if (pendingRememberChoice) {
+          SessionPrefs.saveCredentials(this, pendingUsername, pendingPassword);
+        } else {
+          SessionPrefs.clearCredentials(this);
+        }
+        ClientLogger.log("LoginActivity", "LOGIN confirmed");
         new Thread(new SendMessagesThread("ALBUMS", MessageCodes.getRequest())).start();
       } else if (message.getType().equals(MessageCodes.getLoginError())) {
+        ClientLogger.log("LoginActivity", "LOGIN failed with server error");
         Toast.makeText(
                 getApplicationContext(),
                 getResources().getString(R.string.login_error),
@@ -134,6 +155,7 @@ public class LoginActivity extends AppCompatActivity implements ReceiveMessagesL
       }
     } else if (message.getName().equals("ALBUMS")) {
       if (message.getType().equals(MessageCodes.getConfirm())) {
+        ClientLogger.log("LoginActivity", "ALBUMS response received, opening MainActivity");
         Toast.makeText(
                 getApplicationContext(),
                 getResources().getString(R.string.getting_in),

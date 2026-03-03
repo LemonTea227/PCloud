@@ -12,6 +12,9 @@ class ConnectionThread implements Runnable {
   @Override
   public void run() {
     Socket socket;
+    ClientLogger.log(
+        "ConnectionThread",
+        "Starting connection loop to " + MySocket.getIP() + ":" + MySocket.getPort());
     while (true) {
       try {
         socket = new Socket(MySocket.getIP(), MySocket.getPort());
@@ -19,8 +22,13 @@ class ConnectionThread implements Runnable {
         MySocket.setSocket(socket);
         MySocket.setOutput(new PrintWriter(socket.getOutputStream()));
         MySocket.setInput(new BufferedReader(new InputStreamReader(socket.getInputStream())));
+        ClientLogger.log(
+            "ConnectionThread",
+            "Connected to server at " + MySocket.getIP() + ":" + MySocket.getPort());
         break;
       } catch (IOException e) {
+        ClientLogger.logError(
+            "ConnectionThread", "Primary IP connection failed, trying internal IP", e);
         MySocket.setIP(MySocket.getINERIP());
         try {
           socket = new Socket(MySocket.getIP(), MySocket.getPort());
@@ -28,14 +36,16 @@ class ConnectionThread implements Runnable {
           MySocket.setSocket(socket);
           MySocket.setOutput(new PrintWriter(socket.getOutputStream()));
           MySocket.setInput(new BufferedReader(new InputStreamReader(socket.getInputStream())));
+          ClientLogger.log("ConnectionThread", "Connected via internal IP " + MySocket.getIP());
+          break;
         } catch (IOException err) {
-          err.printStackTrace();
+          ClientLogger.logError("ConnectionThread", "Internal IP connection failed", err);
         }
       }
       try {
         Thread.sleep(1000);
       } catch (InterruptedException e) {
-        e.printStackTrace();
+        ClientLogger.logError("ConnectionThread", "Interrupted while reconnecting", e);
       }
     }
   }

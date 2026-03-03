@@ -1,4 +1,11 @@
 from __future__ import print_function
+import sys
+
+PY2 = sys.version_info[0] == 2
+try:
+    text_type = unicode
+except NameError:
+    text_type = str
 
 DEBUG = True
 ENCRYPT = False
@@ -7,12 +14,20 @@ LOG_FILE = "log.txt"
 
 
 def _to_bytes(value):
+    if PY2:
+        if isinstance(value, text_type):
+            return value.encode("utf-8")
+        return value
     if isinstance(value, bytes):
         return value
     return value.encode("utf-8")
 
 
 def _to_text(value):
+    if PY2:
+        if isinstance(value, text_type):
+            return value.encode("utf-8")
+        return value
     if isinstance(value, bytes):
         return value.decode("utf-8")
     return value
@@ -73,7 +88,7 @@ def get_photo_from_message(message):
 
 
 def send_by_protocol(sock, message, aes_key=None):
-    sock.send(_to_bytes(message))
+    sock.sendall(_to_bytes(message))
     if DEBUG and message != "" and len(message) <= 100:
         print("\nSent(%s)>>>%s" % (len(message), message))
     elif DEBUG and message != "":
@@ -110,10 +125,12 @@ def recv_by_protocol(sock, aes_key=None):
                 received = _to_text(received)
                 data += received
 
-    # if aes_key and data != '':
-    #     # TODO: fix this
-    #      print data
-    #     data = 'data:' + AES_encrypt_decrypt.decrypt(..., aes_key)
+    if aes_key and data.startswith("data:"):
+        encrypted_data = data[5:]
+        if encrypted_data:
+            import AES_encrypt_decrypt
+
+            data = "data:" + AES_encrypt_decrypt.decrypt(encrypted_data, aes_key)
 
     message = str_headers + data
     if DEBUG and data_size != "" and len(data) <= 100:

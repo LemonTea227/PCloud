@@ -33,4 +33,7 @@
     <string name="upload_photo_error">לא היה ניתן להעלות את התמונה שלך</string>
     <string name="photo_error">לא היה ניתן להשיג את התמונה שלך</string>
     <string name="lost_connection">אבד הקשר לשרת מנסה להתחבר…</string>
+    <string name="keep_me_logged_in">השאר אותי מחובר</string>
+    <string name="client_log_path">נתיב קובץ לוג לקוח</string>
+    <string name="client_log_path_value">נתיב קובץ לוג לקוח: %1$s</string>
 </resources>
