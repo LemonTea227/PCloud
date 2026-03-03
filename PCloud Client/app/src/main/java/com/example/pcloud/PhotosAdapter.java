@@ -1,7 +1,6 @@
 package com.example.pcloud;
 
 import android.content.Context;
-import android.content.Intent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -11,10 +10,21 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
 
 class PhotosAdapter extends RecyclerView.Adapter<PhotosAdapter.PhotosViewHolder> {
+  interface PhotoInteractionListener {
+    void onOpenPhoto(String photoName);
+
+    void onTogglePhotoSelection(String photoName);
+
+    boolean isSelectionModeEnabled();
+
+    boolean isPhotoSelected(String photoName);
+  }
+
   private ArrayList<PhotosItem> photos;
   Context context;
   String albums;
   String album_name;
+  private PhotoInteractionListener interactionListener;
 
   public PhotosAdapter(
       Context context, ArrayList<PhotosItem> photos, String albums, String album_name) {
@@ -22,6 +32,16 @@ class PhotosAdapter extends RecyclerView.Adapter<PhotosAdapter.PhotosViewHolder>
     this.photos = photos;
     this.albums = albums;
     this.album_name = album_name;
+  }
+
+  public PhotosAdapter(
+      Context context,
+      ArrayList<PhotosItem> photos,
+      String albums,
+      String album_name,
+      PhotoInteractionListener interactionListener) {
+    this(context, photos, albums, album_name);
+    this.interactionListener = interactionListener;
   }
 
   public PhotosAdapter(Context context, ArrayList<PhotosItem> photos) {
@@ -57,68 +77,46 @@ class PhotosAdapter extends RecyclerView.Adapter<PhotosAdapter.PhotosViewHolder>
   @Override
   public void onBindViewHolder(@NonNull PhotosViewHolder holder, int position) {
     PhotosItem currentItem = photos.get(position);
-    holder.firstPhotoImageButton.setImageBitmap(currentItem.getFirstPhotoIcon());
-    if (currentItem.getFourthPhotoIcon() != null) {
-      holder.fourthPhotoImageButton.setImageBitmap(currentItem.getFourthPhotoIcon());
-      holder.fourthPhotoImageButton.setOnClickListener(
-          new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-              Intent goPhotoViewer = new Intent(context, PhotoViewerActivity.class);
-              goPhotoViewer.putExtra("album_name", album_name);
-              goPhotoViewer.putExtra("albums", albums);
-              goPhotoViewer.putExtra("photo_name", currentItem.getFourtName());
-              MySocket.setClosed(true);
-              goPhotoViewer.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-              context.startActivity(goPhotoViewer);
-            }
-          });
-    }
-    if (currentItem.getThirdPhotoIcon() != null) {
-      holder.thirdPhotoImageButton.setImageBitmap(currentItem.getThirdPhotoIcon());
-      holder.thirdPhotoImageButton.setOnClickListener(
-          new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-              Intent goPhotoViewer = new Intent(context, PhotoViewerActivity.class);
-              goPhotoViewer.putExtra("album_name", album_name);
-              goPhotoViewer.putExtra("albums", albums);
-              goPhotoViewer.putExtra("photo_name", currentItem.getThirdName());
-              MySocket.setClosed(true);
-              goPhotoViewer.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-              context.startActivity(goPhotoViewer);
-            }
-          });
-    }
-    if (currentItem.getSecondPhotoIcon() != null) {
-      holder.secondPhotoImageButton.setImageBitmap(currentItem.getSecondPhotoIcon());
+    bindPhotoButton(holder.firstPhotoImageButton, currentItem.getFirstName(), currentItem.getFirstPhotoIcon());
+    bindPhotoButton(
+        holder.secondPhotoImageButton, currentItem.getSecondName(), currentItem.getSecondPhotoIcon());
+    bindPhotoButton(holder.thirdPhotoImageButton, currentItem.getThirdName(), currentItem.getThirdPhotoIcon());
+    bindPhotoButton(
+        holder.fourthPhotoImageButton, currentItem.getFourtName(), currentItem.getFourthPhotoIcon());
+  }
 
-      holder.secondPhotoImageButton.setOnClickListener(
-          new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-              Intent goPhotoViewer = new Intent(context, PhotoViewerActivity.class);
-              goPhotoViewer.putExtra("album_name", album_name);
-              goPhotoViewer.putExtra("albums", albums);
-              goPhotoViewer.putExtra("photo_name", currentItem.getSecondName());
-              MySocket.setClosed(true);
-              goPhotoViewer.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-              context.startActivity(goPhotoViewer);
-            }
-          });
+  private void bindPhotoButton(ImageButton button, String photoName, android.graphics.Bitmap bitmap) {
+    if (bitmap == null || photoName == null || photoName.equals("")) {
+      button.setImageDrawable(null);
+      button.setVisibility(View.INVISIBLE);
+      button.setOnClickListener(null);
+      button.setOnLongClickListener(null);
+      return;
     }
-    holder.firstPhotoImageButton.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View v) {
-            Intent goPhotoViewer = new Intent(context, PhotoViewerActivity.class);
-            goPhotoViewer.putExtra("album_name", album_name);
-            goPhotoViewer.putExtra("albums", albums);
-            goPhotoViewer.putExtra("photo_name", currentItem.getFirstName());
-            MySocket.setClosed(true);
-            goPhotoViewer.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(goPhotoViewer);
+
+    button.setVisibility(View.VISIBLE);
+    button.setImageBitmap(bitmap);
+    boolean selected = interactionListener != null && interactionListener.isPhotoSelected(photoName);
+    button.setAlpha(selected ? 0.55f : 1.0f);
+
+    button.setOnClickListener(
+        v -> {
+          if (interactionListener == null) {
+            return;
           }
+          if (interactionListener.isSelectionModeEnabled()) {
+            interactionListener.onTogglePhotoSelection(photoName);
+          } else {
+            interactionListener.onOpenPhoto(photoName);
+          }
+        });
+    button.setOnLongClickListener(
+        v -> {
+          if (interactionListener != null) {
+            interactionListener.onTogglePhotoSelection(photoName);
+            return true;
+          }
+          return false;
         });
   }
 

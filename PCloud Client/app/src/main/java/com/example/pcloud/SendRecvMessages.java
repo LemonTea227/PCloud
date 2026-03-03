@@ -34,78 +34,85 @@ class ReceiveMessagesThread implements Runnable {
           continue;
         }
         String m = MySocket.getExtraMessage();
-        String d = "";
-        int size = -1;
-        int length = -2;
         char[] buffer = new char[1024];
 
-        while (!m.contains("\n\n") || length < size) {
+        while (true) {
           try {
-            if (m.equals("") || !m.contains("\n\n") || (length < size && size != -1)) {
+            int headerEndIndex = m.indexOf("\n\n");
+            if (headerEndIndex < 0) {
               int charsRead = input.read(buffer);
-              if (charsRead == -1) continue;
-              m += new String(buffer).substring(0, charsRead);
+              if (charsRead == -1) {
+                continue;
+              }
+              m += new String(buffer, 0, charsRead);
+              continue;
             }
-            if (m.equals("")) {
+
+            String header = m.substring(0, headerEndIndex);
+            String[] headerLines = header.split("\n");
+            if (headerLines.length < 3 || !headerLines[2].startsWith("size:")) {
+              int charsRead = input.read(buffer);
+              if (charsRead == -1) {
+                continue;
+              }
+              m += new String(buffer, 0, charsRead);
+              continue;
+            }
+
+            int size;
+            try {
+              size = Integer.parseInt(headerLines[2].substring(5));
+            } catch (NumberFormatException ignored) {
+              int charsRead = input.read(buffer);
+              if (charsRead == -1) {
+                continue;
+              }
+              m += new String(buffer, 0, charsRead);
+              continue;
+            }
+
+            int dataStartIndex = headerEndIndex + 7;
+            int messageLength = dataStartIndex + size;
+            if (m.length() < messageLength) {
+              int charsRead = input.read(buffer);
+              if (charsRead == -1) {
+                continue;
+              }
+              m += new String(buffer, 0, charsRead);
+              continue;
+            }
+
+            final String message = m.substring(0, messageLength);
+            if (m.length() > messageLength) {
+              MySocket.setExtraMessage(m.substring(messageLength));
+            } else {
+              MySocket.setExtraMessage("");
+            }
+
+            if (!message.equals("")) {
+              ClientLogger.log("ReceiveMessagesThread", "Received message bytes=" + message.length());
+
+              activity.runOnUiThread(
+                  new Runnable() {
+                    @Override
+                    public void run() {
+                      listener.messageReceived(message, activity);
+                    }
+                  });
+
               break;
             }
 
-            // check if the size of the received data (length) equals to size value (size)
-            if (size < 0) {
-              if (!m.contains("\n\n")) {
-                continue;
-              }
-              String[] headerAndRest = m.split("\n\n", 2);
-              String[] headerLines = headerAndRest[0].split("\n");
-              if (headerLines.length < 3 || !headerLines[2].startsWith("size:")) {
-                continue;
-              }
-              try {
-                size = Integer.parseInt(headerLines[2].substring(5));
-              } catch (NumberFormatException ignored) {
-                continue;
-              }
-            }
-            if (m.contains("\n\n")) {
-              String[] sp_mes = m.split("\n\ndata:", -1);
-              d = "";
-              for (int i = 1; i < sp_mes.length; i++) {
-                d += sp_mes[i] + "\n\n";
-              }
-              if (d.length() >= 2) {
-                if (MySocket.doAdd(m)) d = d.substring(0, d.length() - 2);
-              }
-              length = d.length();
-            }
+            throw new IOException();
 
           } catch (SocketTimeoutException e) {
             continue;
           }
         }
-        if (size >= 0 && length > size) {
-          MySocket.setExtraMessage(d.substring(size, length)); // optional error
-          m = m.substring(0, m.length() - (length - size));
-        } else {
-          MySocket.setExtraMessage("");
-        }
-
-        final String message = m;
-
-        if (!message.equals("")) {
-          ClientLogger.log("ReceiveMessagesThread", "Received message bytes=" + message.length());
-
-          activity.runOnUiThread(
-              new Runnable() {
-                @Override
-                public void run() {
-                  listener.messageReceived(message, activity);
-                }
-              });
-
-        } else {
-          throw new IOException();
-        }
       } catch (IOException e) {
+        if (MySocket.isClosed()) {
+          break;
+        }
         ClientLogger.logError("ReceiveMessagesThread", "Connection lost while receiving", e);
         MySocket.setSocket(null);
         MySocket.setInput(null);

@@ -36,4 +36,17 @@
     <string name="keep_me_logged_in">השאר אותי מחובר</string>
     <string name="client_log_path">נתיב קובץ לוג לקוח</string>
     <string name="client_log_path_value">נתיב קובץ לוג לקוח: %1$s</string>
+    <string name="search">חפש</string>
+    <string name="search_albums">חפש אלבומים</string>
+    <string name="select">בחר</string>
+    <string name="cancel_selection">בטל בחירה</string>
+    <string name="share">שתף</string>
+    <string name="delete">מחק</string>
+    <string name="zoom_in">הגדל</string>
+    <string name="zoom_out">הקטן</string>
+    <string name="reset_zoom">אפס זום</string>
+    <string name="no_photos_selected">לא נבחרו תמונות</string>
+    <string name="photos_deleted">התמונות נמחקו</string>
+    <string name="delete_photo_error">לא ניתן למחוק את התמונות שנבחרו</string>
+    <string name="share_error">לא ניתן לשתף את התמונות שנבחרו</string>
 </resources>

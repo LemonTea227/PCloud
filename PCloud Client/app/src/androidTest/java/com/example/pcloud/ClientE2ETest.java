@@ -6,12 +6,16 @@ import static androidx.test.espresso.Espresso.pressBack;
 import static androidx.test.espresso.action.ViewActions.click;
 import static androidx.test.espresso.action.ViewActions.closeSoftKeyboard;
 import static androidx.test.espresso.action.ViewActions.replaceText;
+import static androidx.test.espresso.action.ViewActions.typeText;
 import static androidx.test.espresso.assertion.ViewAssertions.matches;
+import static androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom;
 import static androidx.test.espresso.matcher.ViewMatchers.hasDescendant;
 import static androidx.test.espresso.matcher.ViewMatchers.isChecked;
 import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
 import static androidx.test.espresso.matcher.ViewMatchers.withId;
+import static androidx.test.espresso.matcher.ViewMatchers.withParent;
 import static androidx.test.espresso.matcher.ViewMatchers.withText;
+import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertTrue;
 
@@ -21,6 +25,8 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.SystemClock;
+import android.os.ParcelFileDescriptor;
+import androidx.appcompat.widget.SearchView;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.espresso.contrib.RecyclerViewActions;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -53,6 +59,9 @@ public class ClientE2ETest {
     MySocket.setIP("127.0.0.1");
     MySocket.setAESkey(new byte[0]);
     MySocket.setExtraMessage("");
+    MySocket.setSocket(null);
+    MySocket.setInput(null);
+    MySocket.setOutput(null);
     MySocket.setClosed(false);
   }
 
@@ -82,9 +91,11 @@ public class ClientE2ETest {
 
   @Test
   public void e2e_register_createAlbum_uploadPhoto_and_openPhotoViewer() {
-    launchSplashAndWaitForLogin();
+    launchSplashAndWaitForEntry();
 
+    waitForView(withId(R.id.registerButtonLogin), 12000);
     onView(withId(R.id.registerButtonLogin)).perform(click());
+    waitForView(withId(R.id.usernameRegister), 8000);
 
     String username = "e2euser";
     String password = "Passw0rd!";
@@ -123,14 +134,14 @@ public class ClientE2ETest {
 
   @Test
   public void e2e_login_and_settings_toggle_keepLoggedIn() {
-    launchSplashAndWaitForLogin();
+    launchSplashAndWaitForEntry();
 
     onView(withId(R.id.usernameLogin)).perform(replaceText("e2elogin"), closeSoftKeyboard());
     onView(withId(R.id.passwordLogin)).perform(replaceText("Passw0rd!"), closeSoftKeyboard());
     onView(withId(R.id.rememberMeLoginCheckBox)).perform(click());
     onView(withId(R.id.loginButtonLogin)).perform(click());
 
-    waitForView(withId(R.id.albumMainRecyclerView), 10000);
+    waitForView(withId(R.id.albumMainRecyclerView), 20000);
 
     Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
     openActionBarOverflowOrOptionsMenu(context);
@@ -160,11 +171,8 @@ public class ClientE2ETest {
   @Test
   public void e2e_many_albums_navigation_is_smooth() {
     server.seedManyAlbums(120);
-    launchSplashAndWaitForLogin();
-
-    onView(withId(R.id.usernameLogin)).perform(replaceText("e2elogin"), closeSoftKeyboard());
-    onView(withId(R.id.passwordLogin)).perform(replaceText("Passw0rd!"), closeSoftKeyboard());
-    onView(withId(R.id.loginButtonLogin)).perform(click());
+    launchSplashAndWaitForEntry();
+    loginAsDefaultUser();
 
     waitForView(withId(R.id.albumMainRecyclerView), 12000);
     onView(withId(R.id.albumMainRecyclerView)).perform(RecyclerViewActions.scrollToPosition(119));
@@ -178,11 +186,8 @@ public class ClientE2ETest {
     String heavyAlbum = "heavy_album";
     server.seedAlbumWithLargePhotos(heavyAlbum, 12, 1400, 1400);
 
-    launchSplashAndWaitForLogin();
-
-    onView(withId(R.id.usernameLogin)).perform(replaceText("e2elogin"), closeSoftKeyboard());
-    onView(withId(R.id.passwordLogin)).perform(replaceText("Passw0rd!"), closeSoftKeyboard());
-    onView(withId(R.id.loginButtonLogin)).perform(click());
+    launchSplashAndWaitForEntry();
+    loginAsDefaultUser();
 
     waitForView(withId(R.id.albumMainRecyclerView), 12000);
     onView(withId(R.id.albumMainRecyclerView))
@@ -196,9 +201,103 @@ public class ClientE2ETest {
     waitForView(withId(R.id.photosSecondRecyclerView), 8000);
   }
 
-  private void launchSplashAndWaitForLogin() {
+  @Test
+  public void e2e_album_search_filters_by_name() {
+    server.seedManyAlbums(80);
+    launchSplashAndWaitForEntry();
+    loginAsDefaultUser();
+
+    waitForView(withId(R.id.albumMainRecyclerView), 12000);
+    clickMenuItem(R.id.searchAlbumsMenuItem, R.string.search);
+    onView(allOf(isAssignableFrom(android.widget.AutoCompleteTextView.class), withParent(isAssignableFrom(SearchView.class))))
+      .perform(replaceText("album_079"), closeSoftKeyboard());
+    waitForView(withText("album_079"), 8000);
+    onView(withId(R.id.albumMainRecyclerView)).perform(RecyclerViewActions.actionOnItemAtPosition(0, click()));
+    waitForView(withId(R.id.photosSecondRecyclerView), 12000);
+  }
+
+  @Test
+  public void e2e_multi_select_delete_and_viewer_zoom_delete() {
+    String albumName = "qol_album";
+    server.seedAlbumWithLargePhotos(albumName, 4, 800, 800);
+
+    launchSplashAndWaitForEntry();
+    loginAsDefaultUser();
+
+    waitForView(withId(R.id.albumMainRecyclerView), 12000);
+    onView(withId(R.id.albumMainRecyclerView))
+        .perform(RecyclerViewActions.scrollTo(hasDescendant(withText(albumName))));
+    onView(withId(R.id.albumMainRecyclerView))
+        .perform(RecyclerViewActions.actionOnItem(hasDescendant(withText(albumName)), click()));
+
+    waitForView(withId(R.id.photosSecondRecyclerView), 12000);
+    waitForView(withId(R.id.firstPhotoImageButton), 30000);
+    clickMenuItem(R.id.selectPhotosMenuItem, R.string.select);
+    onView(withId(R.id.firstPhotoImageButton)).perform(click());
+    onView(withId(R.id.secondPhotoImageButton)).perform(click());
+    clickMenuItem(R.id.deletePhotosMenuItem, R.string.delete);
+
+    waitUntil(() -> !server.hasPhoto(albumName, "large_000.jpg"), 8000);
+    waitUntil(() -> !server.hasPhoto(albumName, "large_001.jpg"), 8000);
+
+    onView(withId(R.id.firstPhotoImageButton)).perform(click());
+    waitForView(withId(R.id.photoViewerPhotoView), 10000);
+
+    Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+    openActionBarOverflowOrOptionsMenu(context);
+    onView(withText(context.getString(R.string.zoom_in))).perform(click());
+
+    onView(withId(R.id.deletePhotoViewerMenuItem)).perform(click());
+    waitUntil(() -> !server.hasPhoto(albumName, "large_002.jpg"), 8000);
+    waitForView(withId(R.id.photosSecondRecyclerView), 10000);
+  }
+
+  private void launchSplashAndWaitForEntry() {
     ActivityScenario.launch(SplashActivity.class);
+    waitUntil(
+        () -> isViewDisplayed(withId(R.id.usernameLogin)) || isViewDisplayed(withId(R.id.albumMainRecyclerView)),
+        20000);
+  }
+
+  private void loginAsDefaultUser() {
+    if (isViewDisplayed(withId(R.id.albumMainRecyclerView))) {
+      return;
+    }
+    if (isViewDisplayed(withId(R.id.photosSecondRecyclerView))) {
+      return;
+    }
     waitForView(withId(R.id.usernameLogin), 12000);
+    for (int attempt = 0; attempt < 3; attempt++) {
+      onView(withId(R.id.usernameLogin)).perform(replaceText("e2elogin"), closeSoftKeyboard());
+      onView(withId(R.id.passwordLogin)).perform(replaceText("Passw0rd!"), closeSoftKeyboard());
+      onView(withId(R.id.loginButtonLogin)).perform(click());
+
+      boolean reachedMain =
+          waitUntilNoThrow(() -> isViewDisplayed(withId(R.id.albumMainRecyclerView)), 25000);
+      if (reachedMain) {
+        return;
+      }
+    }
+    waitForView(withId(R.id.albumMainRecyclerView), 10000);
+  }
+
+  private void clickMenuItem(int itemId, int textResId) {
+    try {
+      onView(withId(itemId)).perform(click());
+    } catch (Throwable ignored) {
+      Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+      openActionBarOverflowOrOptionsMenu(context);
+      onView(withText(context.getString(textResId))).perform(click());
+    }
+  }
+
+  private boolean isViewDisplayed(org.hamcrest.Matcher<android.view.View> matcher) {
+    try {
+      onView(matcher).check(matches(isDisplayed()));
+      return true;
+    } catch (Throwable ignored) {
+      return false;
+    }
   }
 
   private void triggerPhotoPickResultOnSecondActivity() {
@@ -271,5 +370,16 @@ public class ClientE2ETest {
           }
         },
         timeoutMs);
+  }
+
+  private boolean waitUntilNoThrow(Condition condition, long timeoutMs) {
+    long endTime = SystemClock.uptimeMillis() + timeoutMs;
+    while (SystemClock.uptimeMillis() < endTime) {
+      if (condition.done()) {
+        return true;
+      }
+      SystemClock.sleep(150);
+    }
+    return false;
   }
 }

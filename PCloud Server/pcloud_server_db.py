@@ -111,7 +111,7 @@ class UserAlbumPhotoORM(object):
         to_execute += '{0} = "{1}"'.format(lst_args[0], lst_terms[0])
         # to_execute += lst_args[0] + ' = ' + lst_values[0]
 
-        for i in xrange(len(lst_args[1:])):
+        for i in xrange(1, len(lst_args)):
             to_execute += " AND "
             to_execute += '{0} = "{1}"'.format(lst_args[i], lst_terms[i])
 
@@ -544,6 +544,11 @@ class User(object):
 
     def get_album_id_by_album_name(self, album_name):
         return self.db.get_row_DB("albums", ["album_name"], [album_name])[0]
+
+    def delete_photos_in_album(self, album_name, file_names):
+        album_id = self.get_album_id_by_album_name(album_name)
+        for file_name in file_names:
+            self.db.delete_DB("photos", ["album_id", "file_name"], [album_id, file_name])
 
     def change_username(self, username):
         # update database

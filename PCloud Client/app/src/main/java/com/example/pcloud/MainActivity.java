@@ -6,11 +6,13 @@ import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import androidx.appcompat.widget.SearchView;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity implements ReceiveMessagesListener {
   private RecyclerView albumMainRecyclerView;
@@ -18,8 +20,7 @@ public class MainActivity extends AppCompatActivity implements ReceiveMessagesLi
   private RecyclerView.LayoutManager layoutManager;
 
   ArrayList<AlbumItem> albums;
-
-  boolean first = true;
+  ArrayList<AlbumItem> allAlbums;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -41,19 +42,35 @@ public class MainActivity extends AppCompatActivity implements ReceiveMessagesLi
 
     albumMainRecyclerView.setHasFixedSize(true);
     layoutManager = new LinearLayoutManager(this);
-    adapter = new AlbumAdapter(getApplicationContext(), this.albums);
+    adapter = new AlbumAdapter(getApplicationContext(), albums);
 
     albumMainRecyclerView.setLayoutManager(layoutManager);
     albumMainRecyclerView.setAdapter(adapter);
   }
 
   @Override
-  public boolean onPrepareOptionsMenu(Menu menu) {
-    if (first) {
-      MenuInflater inflater = getMenuInflater();
-      inflater.inflate(R.menu.albums_menu, menu);
-      first = false;
-    }
+  public boolean onCreateOptionsMenu(Menu menu) {
+    MenuInflater inflater = getMenuInflater();
+    inflater.inflate(R.menu.albums_menu, menu);
+
+    MenuItem searchItem = menu.findItem(R.id.searchAlbumsMenuItem);
+    SearchView searchView = (SearchView) searchItem.getActionView();
+    searchView.setQueryHint(getString(R.string.search_albums));
+    searchView.setOnQueryTextListener(
+        new SearchView.OnQueryTextListener() {
+          @Override
+          public boolean onQueryTextSubmit(String query) {
+            filterAlbums(query);
+            return true;
+          }
+
+          @Override
+          public boolean onQueryTextChange(String newText) {
+            filterAlbums(newText);
+            return true;
+          }
+        });
+
     return true;
   }
 
@@ -89,13 +106,29 @@ public class MainActivity extends AppCompatActivity implements ReceiveMessagesLi
   }
 
   private void generateAlbums(String message) {
-    albums = new ArrayList<AlbumItem>();
+    allAlbums = new ArrayList<AlbumItem>();
     if (!message.equals("")) {
       String[] albums_message = message.split("\n");
       for (int i = 0; i < albums_message.length; i++) {
-        albums.add(new AlbumItem(albums_message[i]));
+        allAlbums.add(new AlbumItem(albums_message[i]));
       }
     }
+    albums = new ArrayList<AlbumItem>(allAlbums);
+  }
+
+  private void filterAlbums(String query) {
+    String normalized = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+    albums.clear();
+    if (normalized.isEmpty()) {
+      albums.addAll(allAlbums);
+    } else {
+      for (AlbumItem album : allAlbums) {
+        if (album.getAlbumName().toLowerCase(Locale.ROOT).contains(normalized)) {
+          albums.add(album);
+        }
+      }
+    }
+    adapter.notifyDataSetChanged();
   }
 
   @Override

@@ -16,27 +16,26 @@ class ConnectionThread implements Runnable {
         "ConnectionThread",
         "Starting connection loop to " + MySocket.getIP() + ":" + MySocket.getPort());
     while (true) {
+      String primaryIp = MySocket.getIP();
       try {
-        socket = new Socket(MySocket.getIP(), MySocket.getPort());
+        socket = new Socket(primaryIp, MySocket.getPort());
         socket.setSoTimeout(1000);
         MySocket.setSocket(socket);
         MySocket.setOutput(new PrintWriter(socket.getOutputStream()));
         MySocket.setInput(new BufferedReader(new InputStreamReader(socket.getInputStream())));
-        ClientLogger.log(
-            "ConnectionThread",
-            "Connected to server at " + MySocket.getIP() + ":" + MySocket.getPort());
+        ClientLogger.log("ConnectionThread", "Connected to server at " + primaryIp + ":" + MySocket.getPort());
         break;
       } catch (IOException e) {
         ClientLogger.logError(
             "ConnectionThread", "Primary IP connection failed, trying internal IP", e);
-        MySocket.setIP(MySocket.getINERIP());
+        String fallbackIp = MySocket.getINERIP();
         try {
-          socket = new Socket(MySocket.getIP(), MySocket.getPort());
+          socket = new Socket(fallbackIp, MySocket.getPort());
           socket.setSoTimeout(1000);
           MySocket.setSocket(socket);
           MySocket.setOutput(new PrintWriter(socket.getOutputStream()));
           MySocket.setInput(new BufferedReader(new InputStreamReader(socket.getInputStream())));
-          ClientLogger.log("ConnectionThread", "Connected via internal IP " + MySocket.getIP());
+          ClientLogger.log("ConnectionThread", "Connected via internal IP " + fallbackIp);
           break;
         } catch (IOException err) {
           ClientLogger.logError("ConnectionThread", "Internal IP connection failed", err);
@@ -184,6 +183,8 @@ class MessageCodes {
 
   private static String PhotoError = "207";
 
+  private static String DelPhotosError = "208";
+
   private static String AccessDenied = "3";
 
   public static String getRequest() {
@@ -224,6 +225,10 @@ class MessageCodes {
 
   public static String getPhotoError() {
     return PhotoError;
+  }
+
+  public static String getDelPhotosError() {
+    return DelPhotosError;
   }
 
   public static String getAccessDenied() {

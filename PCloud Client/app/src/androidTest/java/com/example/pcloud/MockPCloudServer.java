@@ -23,6 +23,7 @@ class MockPCloudServer {
   private volatile boolean running;
   private ServerSocket serverSocket;
   private Thread serverThread;
+  private final List<Thread> clientThreads = Collections.synchronizedList(new ArrayList<>());
 
   private final Map<String, String> users = new ConcurrentHashMap<>();
   private final Map<String, LinkedHashMap<String, String>> albums = new ConcurrentHashMap<>();
@@ -35,13 +36,16 @@ class MockPCloudServer {
   void start() throws IOException {
     running = true;
     serverSocket = new ServerSocket(PORT);
+    serverSocket.setReuseAddress(true);
     serverThread =
         new Thread(
             () -> {
               while (running) {
                 try {
                   Socket client = serverSocket.accept();
-                  handleClient(client);
+                  Thread clientThread = new Thread(() -> handleClient(client), "MockPCloudClient");
+                  clientThread.start();
+                  clientThreads.add(clientThread);
                 } catch (IOException ignored) {
                   if (!running) {
                     return;
@@ -67,6 +71,15 @@ class MockPCloudServer {
       } catch (InterruptedException ignored) {
       }
     }
+    synchronized (clientThreads) {
+      for (Thread thread : clientThreads) {
+        try {
+          thread.join(1000);
+        } catch (InterruptedException ignored) {
+        }
+      }
+      clientThreads.clear();
+    }
   }
 
   boolean hasAlbum(String albumName) {
@@ -74,6 +87,11 @@ class MockPCloudServer {
   }
 
   boolean hasUploadedPhoto(String albumName, String photoName) {
+    LinkedHashMap<String, String> photos = albums.get(albumName);
+    return photos != null && photos.containsKey(photoName);
+  }
+
+  boolean hasPhoto(String albumName, String photoName) {
     LinkedHashMap<String, String> photos = albums.get(albumName);
     return photos != null && photos.containsKey(photoName);
   }
@@ -211,6 +229,19 @@ class MockPCloudServer {
         }
       }
       return new ProtocolMessage("PHOTO", "207", "");
+    }
+    if ("DEL_PHOTOS".equals(name)) {
+      String[] lines = request.data.split("\\n");
+      if (lines.length >= 2 && albums.containsKey(lines[0])) {
+        LinkedHashMap<String, String> photos = albums.get(lines[0]);
+        for (int i = 1; i < lines.length; i++) {
+          if (lines[i].length() > 0) {
+            photos.remove(lines[i]);
+          }
+        }
+        return new ProtocolMessage("DEL_PHOTOS", "1", "");
+      }
+      return new ProtocolMessage("DEL_PHOTOS", "208", "");
     }
     return null;
   }

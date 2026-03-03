@@ -32,6 +32,7 @@ DEL_ALBUMS_ERROR = "204"
 PHOTOS_ERROR = "205"
 UPLOAD_PHOTO_ERROR = "206"
 PHOTO_ERROR = "207"
+DEL_PHOTOS_ERROR = "208"
 
 USER_KIND = 1
 ALBUM_KIND = 2
@@ -320,6 +321,13 @@ def async_send_receive(sock):
                 continue
             print("disconnecting user")
             break
+        except Exception as e:
+            try:
+                USERS.pop(sock)
+            except Exception:
+                pass
+            print("disconnecting user due to error: %s" % str(e))
+            break
 
 
 def receive_handler(sock, recv, aes_key=None):
@@ -330,11 +338,18 @@ def receive_handler(sock, recv, aes_key=None):
     :return:
     """
     if get_header_from_message(recv, "type") == REQUEST:
-        if get_header_from_message(recv, "name").upper() == "LOGIN":
+        message_name = get_header_from_message(recv, "name").upper()
+        message_data = get_data_from_message(recv)
+
+        if message_name == "LOGIN":
+            login_parts = message_data.split("\n")
+            if len(login_parts) < 2:
+                SEND[sock].append(build_message("LOGIN", LOGIN_ERROR, aes_key=aes_key))
+                return
             h = hashlib.sha256()
-            h.update(get_data_from_message(recv).split("\n")[1])
+            h.update(login_parts[1])
             user = pcloud_server_db.User()
-            if user.login(get_data_from_message(recv).split("\n")[0], h.hexdigest()):
+            if user.login(login_parts[0], h.hexdigest()):
                 USERS[sock] = user
                 SEND[sock].append(
                     build_message(get_header_from_message(recv, "name"), CONFIRM, aes_key=aes_key)
@@ -345,16 +360,20 @@ def receive_handler(sock, recv, aes_key=None):
                         get_header_from_message(recv, "name"), LOGIN_ERROR, aes_key=aes_key
                     )
                 )
-        elif get_header_from_message(recv, "name").upper() == "REGISTER":
+        elif message_name == "REGISTER":
+            register_parts = message_data.split("\n")
+            if len(register_parts) < 4:
+                SEND[sock].append(build_message("REGISTER", REGISTER_ERROR, aes_key=aes_key))
+                return
             h = hashlib.sha256()
-            h.update(get_data_from_message(recv).split("\n")[1])
+            h.update(register_parts[1])
             user = pcloud_server_db.User()
             if user.register(
                 generate_id(USER_KIND),
-                get_data_from_message(recv).split("\n")[0],
+                register_parts[0],
                 h.hexdigest(),
-                get_data_from_message(recv).split("\n")[2],
-                get_data_from_message(recv).split("\n")[3],
+                register_parts[2],
+                register_parts[3],
             ):
                 USERS[sock] = user
                 SEND[sock].append(
@@ -366,16 +385,16 @@ def receive_handler(sock, recv, aes_key=None):
                         get_header_from_message(recv, "name"), REGISTER_ERROR, aes_key=aes_key
                     )
                 )
-        elif get_header_from_message(recv, "name").upper() == "ALBUMS":
+        elif message_name == "ALBUMS":
             data = "\n".join(get_albums_names(sock))
             SEND[sock].append(
                 build_message(get_header_from_message(recv, "name"), CONFIRM, data, aes_key=aes_key)
             )
 
-        elif get_header_from_message(recv, "name").upper() == "NEW_ALBUM":
+        elif message_name == "NEW_ALBUM":
             try:
                 album = pcloud_server_db.Album()
-                name = get_data_from_message(recv)
+                name = message_data
                 names = get_albums_names(sock)
                 unique_name = album_naming(name, names)
                 album_id = generate_id(ALBUM_KIND)
@@ -390,9 +409,9 @@ def receive_handler(sock, recv, aes_key=None):
                         get_header_from_message(recv, "name"), NEW_ALBUM_ERROR, aes_key=aes_key
                     )
                 )
-        elif get_header_from_message(recv, "name").upper() == "DEL_ALBUMS":
+        elif message_name == "DEL_ALBUMS":
             try:
-                album_names = get_data_from_message(recv).split("\n")
+                album_names = message_data.split("\n")
                 for name in album_names:
                     album = pcloud_server_db.Album()
                     album.album_name = name
@@ -410,14 +429,14 @@ def receive_handler(sock, recv, aes_key=None):
                         get_header_from_message(recv, "name"), DEL_ALBUMS_ERROR, aes_key=aes_key
                     )
                 )
-        elif get_header_from_message(recv, "name").upper() == "PHOTOS":
+        elif message_name == "PHOTOS":
             try:
-                photos_message = generate_photos_from_album(sock, get_data_from_message(recv))
+                photos_message = generate_photos_from_album(sock, message_data)
                 SEND[sock].append(
                     build_message(
                         get_header_from_message(recv, "name"),
                         CONFIRM,
-                        get_data_from_message(recv) + "\n" + photos_message,
+                        message_data + "\n" + photos_message,
                     )
                 )
             except IOError:
@@ -426,12 +445,16 @@ def receive_handler(sock, recv, aes_key=None):
                         get_header_from_message(recv, "name"), PHOTOS_ERROR, aes_key=aes_key
                     )
                 )
-        elif get_header_from_message(recv, "name").upper() == "UPLOAD_PHOTO":
-            album_name = get_data_from_message(recv).split("\n")[0]
+        elif message_name == "UPLOAD_PHOTO":
+            upload_parts = message_data.split("\n", 2)
+            if len(upload_parts) < 3:
+                SEND[sock].append(build_message("UPLOAD_PHOTO", UPLOAD_PHOTO_ERROR, aes_key=aes_key))
+                return
+            album_name = upload_parts[0]
             album_id = USERS[sock].get_album_id_by_album_name(album_name)
             file_names = get_photos_names(sock, album_name)
-            file_name = naming(get_data_from_message(recv).split("\n")[1], file_names)
-            file_data = get_data_from_message(recv).split("\n")[2]
+            file_name = naming(upload_parts[1], file_names)
+            file_data = upload_parts[2]
             photo_id = generate_id(PHOTO_KIND)
             photo = pcloud_server_db.Photo()
             photo.new_photo(photo_id, album_id, USERS[sock].user_id, file_name, file_data)
@@ -440,7 +463,7 @@ def receive_handler(sock, recv, aes_key=None):
                     build_message(
                         get_header_from_message(recv, "name"),
                         CONFIRM,
-                        file_name + "~" + get_data_from_message(recv).split("\n")[2],
+                        file_name + "~" + upload_parts[2],
                         aes_key=aes_key,
                     )
                 )
@@ -450,10 +473,14 @@ def receive_handler(sock, recv, aes_key=None):
                         get_header_from_message(recv, "name"), UPLOAD_PHOTO_ERROR, aes_key=aes_key
                     )
                 )
-        elif get_header_from_message(recv, "name").upper() == "PHOTO":
+        elif message_name == "PHOTO":
             try:
-                photo_album = get_data_from_message(recv).split("\n")[0]
-                file_name = get_data_from_message(recv).split("\n")[1]
+                photo_parts = message_data.split("\n")
+                if len(photo_parts) < 2:
+                    SEND[sock].append(build_message("PHOTO", PHOTO_ERROR, aes_key=aes_key))
+                    return
+                photo_album = photo_parts[0]
+                file_name = photo_parts[1]
                 photo_to_send = get_encoded_photo(sock, photo_album, file_name)
                 SEND[sock].append(
                     build_message(
@@ -467,6 +494,25 @@ def receive_handler(sock, recv, aes_key=None):
                 SEND[sock].append(
                     build_message(
                         get_header_from_message(recv, "name"), CONFIRM, PHOTO_ERROR, aes_key=aes_key
+                    )
+                )
+        elif message_name == "DEL_PHOTOS":
+            try:
+                payload_lines = message_data.split("\n")
+                if len(payload_lines) < 1 or not payload_lines[0]:
+                    SEND[sock].append(build_message("DEL_PHOTOS", DEL_PHOTOS_ERROR, aes_key=aes_key))
+                    return
+                album_name = payload_lines[0]
+                file_names = [name for name in payload_lines[1:] if name]
+                if file_names:
+                    USERS[sock].delete_photos_in_album(album_name, file_names)
+                SEND[sock].append(
+                    build_message(get_header_from_message(recv, "name"), CONFIRM, aes_key=aes_key)
+                )
+            except IOError:
+                SEND[sock].append(
+                    build_message(
+                        get_header_from_message(recv, "name"), DEL_PHOTOS_ERROR, aes_key=aes_key
                     )
                 )
 

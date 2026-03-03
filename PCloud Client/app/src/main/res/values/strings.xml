@@ -37,4 +37,17 @@
     <string name="keep_me_logged_in">Keep me logged in</string>
     <string name="client_log_path">Client log file</string>
     <string name="client_log_path_value">Client log file: %1$s</string>
+    <string name="search">Search</string>
+    <string name="search_albums">Search albums</string>
+    <string name="select">Select</string>
+    <string name="cancel_selection">Cancel selection</string>
+    <string name="share">Share</string>
+    <string name="delete">Delete</string>
+    <string name="zoom_in">Zoom in</string>
+    <string name="zoom_out">Zoom out</string>
+    <string name="reset_zoom">Reset zoom</string>
+    <string name="no_photos_selected">No photos selected</string>
+    <string name="photos_deleted">Photos deleted</string>
+    <string name="delete_photo_error">Couldn\'t delete selected photos</string>
+    <string name="share_error">Couldn\'t share selected photos</string>
 </resources>
