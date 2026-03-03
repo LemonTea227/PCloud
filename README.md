@@ -4,6 +4,12 @@ Monorepo with:
 - `PCloud Server` (Python server)
 - `PCloud Client` (Android app)
 
+## Requirements
+
+- Java JDK 11+ (required for Android Gradle Plugin 7.x)
+- Android SDK configured via `ANDROID_SDK_ROOT` or `PCloud Client/local.properties`
+- Python 2.7 for the legacy server runtime
+
 ## One-command run
 
 From repo root:

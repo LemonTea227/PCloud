@@ -4,6 +4,21 @@ $clientDir = Join-Path $repoRoot "PCloud Client"
 $serverDir = Join-Path $repoRoot "PCloud Server"
 $localPropertiesFile = Join-Path $clientDir "local.properties"
 
+function Test-Java11OrNewer {
+    $javaOutput = & java -version 2>&1
+    $versionLine = $javaOutput | Select-Object -First 1
+
+    if ($versionLine -match 'version "(\d+)') {
+        $major = [int]$matches[1]
+        if ($major -eq 1 -and $versionLine -match 'version "1\.(\d+)') {
+            return ([int]$matches[1] -ge 11)
+        }
+        return ($major -ge 11)
+    }
+
+    return $false
+}
+
 $androidSdkConfigured = $false
 if ($env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT)) {
     $androidSdkConfigured = $true
@@ -19,7 +34,7 @@ if ($env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT)) {
     }
 }
 
-if ($androidSdkConfigured) {
+if ($androidSdkConfigured -and (Test-Java11OrNewer)) {
     Write-Host "[1/3] Android formatting + lint + unit tests"
     Push-Location $clientDir
     try {
@@ -27,6 +42,8 @@ if ($androidSdkConfigured) {
     } finally {
         Pop-Location
     }
+} elseif ($androidSdkConfigured) {
+    Write-Warning "Java 11+ is required for Android quality checks. Set JAVA_HOME to a JDK 11+ installation."
 } else {
     Write-Warning "Android SDK is not configured to a valid path. Skipping Android quality checks."
 }

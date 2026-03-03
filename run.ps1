@@ -17,6 +17,21 @@ function Ensure-Command([string]$name) {
     }
 }
 
+function Test-Java11OrNewer {
+    $javaOutput = & java -version 2>&1
+    $versionLine = $javaOutput | Select-Object -First 1
+
+    if ($versionLine -match 'version "(\d+)') {
+        $major = [int]$matches[1]
+        if ($major -eq 1 -and $versionLine -match 'version "1\.(\d+)') {
+            return ([int]$matches[1] -ge 11)
+        }
+        return ($major -ge 11)
+    }
+
+    return $false
+}
+
 function Set-ClientSocketConfig([string]$file, [string]$socketHost, [int]$socketPort) {
     $raw = Get-Content -Raw -Path $file
     $updated = $raw -replace 'private static String INERIP = ".*?";', "private static String INERIP = `"$socketHost`";"
@@ -72,6 +87,10 @@ try {
     Set-ClientSocketConfig -file $socketFile -socketHost $ServerHost -socketPort $ServerPort
 
     Write-Host "[4/4] Building/installing Android client..."
+    if (-not (Test-Java11OrNewer)) {
+        throw "Android build requires Java 11+. Please set JAVA_HOME to a JDK 11+ installation."
+    }
+
     if (-not (Test-AndroidSdk -clientPath $clientDir)) {
         throw "Android SDK path is not configured. Set ANDROID_SDK_ROOT or fix sdk.dir in 'PCloud Client/local.properties'."
     }
