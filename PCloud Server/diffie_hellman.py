@@ -1,9 +1,15 @@
 from random import randint, getrandbits
 
-from pcloud_protocol import send_by_protocol, recv_by_protocol, build_message, get_data_from_message, get_header_from_message
+from pcloud_protocol import (
+    send_by_protocol,
+    recv_by_protocol,
+    build_message,
+    get_data_from_message,
+    get_header_from_message,
+)
 
-REQUEST = '0'
-CONFIRM = '1'
+REQUEST = "0"
+CONFIRM = "1"
 
 
 def diffie_hellman_server(sock):
@@ -15,20 +21,20 @@ def diffie_hellman_server(sock):
     P = long(286134470859861285423767856156329902081)
     G = getrandbits(128)
 
-    send_by_protocol(sock, build_message('GENERATOR', CONFIRM, str(G)))
+    send_by_protocol(sock, build_message("GENERATOR", CONFIRM, str(G)))
 
     my_num = randint(1, 20302)
 
-    score = str((G ** my_num) % P)
+    score = str((G**my_num) % P)
     mes = recv_by_protocol(sock)
-    if mes == '':
+    if mes == "":
         sock.close()
         return
     other_score = long(get_data_from_message(mes))
 
-    send_by_protocol(sock, build_message('SCORE', CONFIRM, score))
+    send_by_protocol(sock, build_message("SCORE", CONFIRM, score))
 
-    aes_key_num = (other_score ** my_num) % P
+    aes_key_num = (other_score**my_num) % P
     aes_key_str = ""
     while aes_key_num != 0:
         aes_key_str = chr(aes_key_num % 256) + aes_key_str
@@ -47,13 +53,13 @@ def diffie_hellman_client(sock):
 
     my_num = randint(1, 20303)
 
-    score = str((G ** my_num) % P)
-    send_by_protocol(sock, build_message('SCORE', CONFIRM, data=score))
+    score = str((G**my_num) % P)
+    send_by_protocol(sock, build_message("SCORE", CONFIRM, data=score))
 
     mes = recv_by_protocol(sock)
     other_score = long(mes[-1])
 
-    aes_key_num = (other_score ** my_num) % P
+    aes_key_num = (other_score**my_num) % P
     aes_key_str = ""
     while aes_key_num != 0:
         aes_key_str = chr(aes_key_num % 256) + aes_key_str
@@ -61,5 +67,5 @@ def diffie_hellman_client(sock):
     return aes_key_str
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass

@@ -1,46 +1,48 @@
-import exceptions
 import socket
 import threading
 from datetime import datetime
-from random import randint, getrandbits
 
 import pcloud_server_db
-from pcloud_protocol import send_by_protocol, recv_by_protocol, build_message, get_header_from_message, \
-    get_data_from_message
+from pcloud_protocol import (
+    send_by_protocol,
+    recv_by_protocol,
+    build_message,
+    get_header_from_message,
+    get_data_from_message,
+)
 import os
 from os import listdir
 from os.path import isfile, join
 import base64
-from diffie_hellman import diffie_hellman_server
 import hashlib
 
-IP = '0.0.0.0'
+IP = "0.0.0.0"
 PORT = 22703
 SEND = {}
 THREAD = []
 USERS = {}
 
 # message codes
-REQUEST = '0'
-CONFIRM = '1'
-LOGIN_ERROR = '200'
-REGISTER_ERROR = '201'
-ALBUMS_ERROR = '202'
-NEW_ALBUM_ERROR = '203'
-DEL_ALBUMS_ERROR = '204'
-PHOTOS_ERROR = '205'
-UPLOAD_PHOTO_ERROR = '206'
-PHOTO_ERROR = '207'
+REQUEST = "0"
+CONFIRM = "1"
+LOGIN_ERROR = "200"
+REGISTER_ERROR = "201"
+ALBUMS_ERROR = "202"
+NEW_ALBUM_ERROR = "203"
+DEL_ALBUMS_ERROR = "204"
+PHOTOS_ERROR = "205"
+UPLOAD_PHOTO_ERROR = "206"
+PHOTO_ERROR = "207"
 
 USER_KIND = 1
 ALBUM_KIND = 2
 PHOTO_KIND = 3
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-USER_ID_FILE = os.path.join(BASE_DIR, 'user_id.txt')
-ALBUM_ID_FILE = os.path.join(BASE_DIR, 'album_id.txt')
-PHOTO_ID_FILE = os.path.join(BASE_DIR, 'photo_id.txt')
+USER_ID_FILE = os.path.join(BASE_DIR, "user_id.txt")
+ALBUM_ID_FILE = os.path.join(BASE_DIR, "album_id.txt")
+PHOTO_ID_FILE = os.path.join(BASE_DIR, "photo_id.txt")
 
-PATH_TO_FILES = os.path.join(BASE_DIR, 'proj_files')
+PATH_TO_FILES = os.path.join(BASE_DIR, "proj_files")
 
 
 def main():
@@ -57,7 +59,10 @@ def main():
         while True:
             # open socket with client
             client_socket, address = server_socket.accept()
-            print '(%s) connected to: SOCKET-%s : ADDRESS-%s' % (datetime.now(), client_socket, address)
+            print(
+                "(%s) connected to: SOCKET-%s : ADDRESS-%s"
+                % (datetime.now(), client_socket, address)
+            )
             client_socket.settimeout(0.1)
             SEND[client_socket] = []
             t = threading.Thread(target=async_send_receive, args=(client_socket,))
@@ -65,7 +70,7 @@ def main():
             t.start()
             THREAD.append(t)
     except KeyboardInterrupt:
-        print 'Shutting down server...'
+        print("Shutting down server...")
     finally:
         server_socket.close()
         for t in THREAD:
@@ -78,17 +83,17 @@ def generate_id(kind):
     :param kind: the db id you want
     :return: an available id by kind
     """
-    needed_id = ''
-    file_wanted = ''
+    needed_id = ""
+    file_wanted = ""
     if kind == USER_KIND:
         file_wanted = USER_ID_FILE
     elif kind == ALBUM_KIND:
         file_wanted = ALBUM_ID_FILE
     else:
         file_wanted = PHOTO_ID_FILE
-    with open(file_wanted, 'r') as f:
+    with open(file_wanted, "r") as f:
         needed_id = f.read()
-    with open(file_wanted, 'w') as f:
+    with open(file_wanted, "w") as f:
         f.write(str(int(needed_id) + 1))
     return needed_id
 
@@ -103,21 +108,21 @@ def naming(name, names):
     if name not in names:
         return name
     else:
-        factors = name.split('.')
-        file_type = '.' + factors[-1]
-        name = '.'.join(factors[:-1])
-        if '(' not in name:
-            return naming(name + '(1)' + file_type, names)
+        factors = name.split(".")
+        file_type = "." + factors[-1]
+        name = ".".join(factors[:-1])
+        if "(" not in name:
+            return naming(name + "(1)" + file_type, names)
         else:
-            parts = name.split('(')
+            parts = name.split("(")
 
             try:
-                name = '('.join(parts[:-1])
+                name = "(".join(parts[:-1])
                 num = int(parts[-1][:-1])
-                return naming(name + '(' + str(num + 1) + ')' + file_type, names)
-            except:
-                name = '('.join(parts)
-                return naming(name + '(1)' + file_type, names)
+                return naming(name + "(" + str(num + 1) + ")" + file_type, names)
+            except Exception:
+                name = "(".join(parts)
+                return naming(name + "(1)" + file_type, names)
 
 
 def album_naming(name, names):
@@ -130,17 +135,17 @@ def album_naming(name, names):
     if name not in names:
         return name
     else:
-        if '(' not in name:
-            return album_naming(name + '(1)', names)
+        if "(" not in name:
+            return album_naming(name + "(1)", names)
         else:
-            parts = name.split('(')
+            parts = name.split("(")
             try:
-                name = '('.join(parts[:-1])
+                name = "(".join(parts[:-1])
                 num = int(parts[-1][:-1])
-                return album_naming(name + '(' + str(num + 1) + ')', names)
-            except:
-                name = '('.join(parts)
-                return album_naming(name + '(1)', names)
+                return album_naming(name + "(" + str(num + 1) + ")", names)
+            except Exception:
+                name = "(".join(parts)
+                return album_naming(name + "(1)", names)
 
 
 def get_albums_names(sock):
@@ -174,7 +179,7 @@ def make_album_directory(sock, album_name):
     :param album_name:
     :return:
     """
-    path = ''
+    path = ""
     path += PATH_TO_FILES
     path += "\\" + USERS[sock].username
     path += "\\" + album_name
@@ -182,7 +187,7 @@ def make_album_directory(sock, album_name):
         os.makedirs(path)
     except OSError:
         print("Creation of the directory %s failed" % path)
-        SEND[sock].append(build_message('NEW_ALBUM', CONFIRM))
+        SEND[sock].append(build_message("NEW_ALBUM", CONFIRM))
     else:
         print("Successfully created the directory %s" % path)
 
@@ -194,7 +199,7 @@ def del_album_directory(sock, album_name):
     :param album_name:
     :return:
     """
-    path = ''
+    path = ""
     path += PATH_TO_FILES
     path += "\\" + USERS[sock].username
     path += "\\" + album_name
@@ -204,7 +209,7 @@ def del_album_directory(sock, album_name):
         print("Deleting of the directory %s failed" % path)
     else:
         print("Successfully deleted the directory %s" % path)
-        SEND[sock].append(build_message('DEL_ALBUMS', CONFIRM))
+        SEND[sock].append(build_message("DEL_ALBUMS", CONFIRM))
 
 
 def generate_photos_from_album(sock, album_name):
@@ -216,15 +221,15 @@ def generate_photos_from_album(sock, album_name):
     """
     path = PATH_TO_FILES
     path += "\\" + USERS[sock].username
-    path += "\\" + album_name + '\\'
+    path += "\\" + album_name + "\\"
     onlyfiles = [f for f in listdir(path) if isfile(join(path, f))]
     lst_encode = []
     for file_path in onlyfiles:
-        img = ''
-        with open(path + file_path, 'rb') as f:
+        img = ""
+        with open(path + file_path, "rb") as f:
             img = f.read()
-        lst_encode.append(file_path + '~' + base64.b64encode(img))
-    return '\n'.join(lst_encode)
+        lst_encode.append(file_path + "~" + base64.b64encode(img))
+    return "\n".join(lst_encode)
 
 
 def get_encoded_photo(sock, album_name, file_name):
@@ -237,9 +242,9 @@ def get_encoded_photo(sock, album_name, file_name):
     """
     path = PATH_TO_FILES
     path += "\\" + USERS[sock].username
-    path += "\\" + album_name + '\\' + file_name
-    img = ''
-    with open(path, 'rb') as f:
+    path += "\\" + album_name + "\\" + file_name
+    img = ""
+    with open(path, "rb") as f:
         img = f.read()
     return base64.b64encode(img)
 
@@ -316,14 +321,16 @@ def async_send_receive(sock):
         except socket.error:
             try:
                 USERS.pop(sock)
-            except:
+            except Exception:
                 continue
-            print 'disconnecting user'
+            print("disconnecting user")
             break
 
 
 def upload_photo(sock, album_name, file_name, file_data):
-    with open(PATH_TO_FILES + '\\' + USERS[sock].username + '\\' + album_name + '\\' + file_name, 'wb') as f:
+    with open(
+        PATH_TO_FILES + "\\" + USERS[sock].username + "\\" + album_name + "\\" + file_name, "wb"
+    ) as f:
         f.write(file_data)
 
 
@@ -334,35 +341,40 @@ def receive_handler(sock, recv, aes_key=None):
     :param  :type
     :return:
     """
-    if get_header_from_message(recv, 'type') == REQUEST:
-        if get_header_from_message(recv, 'name').upper() == 'LOGIN':
+    if get_header_from_message(recv, "type") == REQUEST:
+        if get_header_from_message(recv, "name").upper() == "LOGIN":
             h = hashlib.sha256()
-            h.update(get_data_from_message(recv).split('\n')[1])
+            h.update(get_data_from_message(recv).split("\n")[1])
             user = pcloud_server_db.User()
-            if user.login(get_data_from_message(recv).split('\n')[0], h.hexdigest()):
+            if user.login(get_data_from_message(recv).split("\n")[0], h.hexdigest()):
                 USERS[sock] = user
-                SEND[sock].append(build_message(get_header_from_message(recv, 'name'), CONFIRM))
+                SEND[sock].append(build_message(get_header_from_message(recv, "name"), CONFIRM))
             else:
-                SEND[sock].append(build_message(get_header_from_message(recv, 'name'), LOGIN_ERROR))
-        elif get_header_from_message(recv, 'name').upper() == 'REGISTER':
+                SEND[sock].append(build_message(get_header_from_message(recv, "name"), LOGIN_ERROR))
+        elif get_header_from_message(recv, "name").upper() == "REGISTER":
             h = hashlib.sha256()
-            h.update(get_data_from_message(recv).split('\n')[1])
+            h.update(get_data_from_message(recv).split("\n")[1])
             user = pcloud_server_db.User()
-            if user.register(generate_id(USER_KIND), get_data_from_message(recv).split('\n')[0],
-                             h.hexdigest(),
-                             get_data_from_message(recv).split('\n')[2],
-                             get_data_from_message(recv).split('\n')[3]):
+            if user.register(
+                generate_id(USER_KIND),
+                get_data_from_message(recv).split("\n")[0],
+                h.hexdigest(),
+                get_data_from_message(recv).split("\n")[2],
+                get_data_from_message(recv).split("\n")[3],
+            ):
                 USERS[sock] = user
-                SEND[sock].append(build_message(get_header_from_message(recv, 'name'), CONFIRM))
+                SEND[sock].append(build_message(get_header_from_message(recv, "name"), CONFIRM))
             else:
-                SEND[sock].append(build_message(get_header_from_message(recv, 'name'), REGISTER_ERROR))
-        elif get_header_from_message(recv, 'name').upper() == 'ALBUMS':
-            data = '\n'.join(get_albums_names(sock))
+                SEND[sock].append(
+                    build_message(get_header_from_message(recv, "name"), REGISTER_ERROR)
+                )
+        elif get_header_from_message(recv, "name").upper() == "ALBUMS":
+            data = "\n".join(get_albums_names(sock))
             SEND[sock].append(
-                build_message(get_header_from_message(recv, 'name'), CONFIRM, data, aes_key=aes_key))
+                build_message(get_header_from_message(recv, "name"), CONFIRM, data, aes_key=aes_key)
+            )
 
-
-        elif get_header_from_message(recv, 'name').upper() == 'NEW_ALBUM':
+        elif get_header_from_message(recv, "name").upper() == "NEW_ALBUM":
             try:
                 album = pcloud_server_db.Album()
                 name = get_data_from_message(recv)
@@ -371,56 +383,90 @@ def receive_handler(sock, recv, aes_key=None):
                 album_id = generate_id(ALBUM_KIND)
                 album.new_album(album_id, USERS[sock].user_id, unique_name)
                 make_album_directory(sock, album.album_name)
-                SEND[sock].append(build_message(get_header_from_message(recv, 'name'), CONFIRM))
+                SEND[sock].append(build_message(get_header_from_message(recv, "name"), CONFIRM))
             except IOError:
-                SEND[sock].append(build_message(get_header_from_message(recv, 'name'), NEW_ALBUM_ERROR))
-        elif get_header_from_message(recv, 'name').upper() == 'DEL_ALBUMS':
+                SEND[sock].append(
+                    build_message(get_header_from_message(recv, "name"), NEW_ALBUM_ERROR)
+                )
+        elif get_header_from_message(recv, "name").upper() == "DEL_ALBUMS":
             try:
-                album_names = get_data_from_message(recv).split('\n')
+                album_names = get_data_from_message(recv).split("\n")
                 for name in album_names:
                     album = pcloud_server_db.Album()
                     album.album_name = name
                     album.creator_id = USERS[sock].user_id
                     del_album_directory(sock, album.album_name)
                     album.del_album()
-                    SEND[sock].append(build_message(get_header_from_message(recv, 'name'), CONFIRM))
+                    SEND[sock].append(build_message(get_header_from_message(recv, "name"), CONFIRM))
             except IOError:
-                SEND[sock].append(build_message(get_header_from_message(recv, 'name'), DEL_ALBUMS_ERROR))
-        elif get_header_from_message(recv, 'name').upper() == 'PHOTOS':
+                SEND[sock].append(
+                    build_message(get_header_from_message(recv, "name"), DEL_ALBUMS_ERROR)
+                )
+        elif get_header_from_message(recv, "name").upper() == "PHOTOS":
             try:
                 photos_message = generate_photos_from_album(sock, get_data_from_message(recv))
-                SEND[sock].append(build_message(get_header_from_message(recv, 'name'), CONFIRM,
-                                                get_data_from_message(recv) + '\n' + photos_message))
+                SEND[sock].append(
+                    build_message(
+                        get_header_from_message(recv, "name"),
+                        CONFIRM,
+                        get_data_from_message(recv) + "\n" + photos_message,
+                    )
+                )
             except IOError:
-                SEND[sock].append(build_message(get_header_from_message(recv, 'name'), PHOTOS_ERROR))
-        elif get_header_from_message(recv, 'name').upper() == 'UPLOAD_PHOTO':
-            album_name = get_data_from_message(recv).split('\n')[0]
+                SEND[sock].append(
+                    build_message(get_header_from_message(recv, "name"), PHOTOS_ERROR)
+                )
+        elif get_header_from_message(recv, "name").upper() == "UPLOAD_PHOTO":
+            album_name = get_data_from_message(recv).split("\n")[0]
             album_id = USERS[sock].get_album_id_by_album_name(album_name)
             file_names = get_photos_names(sock, album_name)
-            file_name = naming(get_data_from_message(recv).split('\n')[1], file_names)
-            file_data = base64.b64decode(get_data_from_message(recv).split('\n')[2])
+            file_name = naming(get_data_from_message(recv).split("\n")[1], file_names)
+            file_data = base64.b64decode(get_data_from_message(recv).split("\n")[2])
             photo_id = generate_id(PHOTO_KIND)
-            t_upload_to_file = threading.Thread(target=upload_photo, args=(sock, album_name, file_name, file_data,))
+            t_upload_to_file = threading.Thread(
+                target=upload_photo,
+                args=(
+                    sock,
+                    album_name,
+                    file_name,
+                    file_data,
+                ),
+            )
             t_upload_to_file.start()
             THREAD.append(t_upload_to_file)
             photo = pcloud_server_db.Photo()
             photo.new_photo(photo_id, album_id, USERS[sock].user_id, file_name)
             try:
                 SEND[sock].append(
-                    build_message(get_header_from_message(recv, 'name'), CONFIRM,
-                                  file_name + '~' + get_data_from_message(recv).split('\n')[2], aes_key=aes_key))
+                    build_message(
+                        get_header_from_message(recv, "name"),
+                        CONFIRM,
+                        file_name + "~" + get_data_from_message(recv).split("\n")[2],
+                        aes_key=aes_key,
+                    )
+                )
             except IOError:
-                SEND[sock].append(build_message(get_header_from_message(recv, 'name'), UPLOAD_PHOTO_ERROR))
-        elif get_header_from_message(recv, 'name').upper() == 'PHOTO':
+                SEND[sock].append(
+                    build_message(get_header_from_message(recv, "name"), UPLOAD_PHOTO_ERROR)
+                )
+        elif get_header_from_message(recv, "name").upper() == "PHOTO":
             try:
-                photo_album = get_data_from_message(recv).split('\n')[0]
-                file_name = get_data_from_message(recv).split('\n')[1]
+                photo_album = get_data_from_message(recv).split("\n")[0]
+                file_name = get_data_from_message(recv).split("\n")[1]
                 photo_to_send = get_encoded_photo(sock, photo_album, file_name)
-                SEND[sock].append(build_message(get_header_from_message(recv, 'name'), CONFIRM, photo_to_send, aes_key=aes_key))
+                SEND[sock].append(
+                    build_message(
+                        get_header_from_message(recv, "name"),
+                        CONFIRM,
+                        photo_to_send,
+                        aes_key=aes_key,
+                    )
+                )
             except IOError:
-                SEND[sock].append(build_message(get_header_from_message(recv, 'name'), CONFIRM, PHOTO_ERROR))
+                SEND[sock].append(
+                    build_message(get_header_from_message(recv, "name"), CONFIRM, PHOTO_ERROR)
+                )
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

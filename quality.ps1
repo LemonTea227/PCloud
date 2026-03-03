@@ -34,6 +34,12 @@ if ($androidSdkConfigured) {
 Write-Host "[2/3] Python unit tests"
 Push-Location $serverDir
 try {
+    if (Test-Path (Join-Path $repoRoot ".venv/Scripts/python.exe")) {
+        & (Join-Path $repoRoot ".venv/Scripts/python.exe") -m black .
+    } else {
+        & py -3 -m black .
+    }
+
     & py -2 -m unittest discover -s tests -p "test_*.py"
     if ($LASTEXITCODE -ne 0) {
         if (Test-Path (Join-Path $repoRoot ".venv/Scripts/python.exe")) {

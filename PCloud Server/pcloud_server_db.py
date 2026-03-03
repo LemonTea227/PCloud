@@ -1,8 +1,10 @@
+# flake8: noqa
+
 import datetime
 import sqlite3
 
-PATH = 'E:\Coding\python\project 2021'
-DBFileName = 'PCloudServerDB.db'
+PATH = "E:\Coding\python\project 2021"
+DBFileName = "PCloudServerDB.db"
 
 
 def create_db(db_name, args, args_type, other_mentions=None):
@@ -16,18 +18,18 @@ def create_db(db_name, args, args_type, other_mentions=None):
     """
     if other_mentions is None:
         other_mentions = []
-    sql_code = 'CREATE TABLE IF NOT EXISTS ' + db_name + '('
+    sql_code = "CREATE TABLE IF NOT EXISTS " + db_name + "("
     for i in xrange(len(args)):
         if (i != len(args) - 1) or (i == len(args) - 1 and other_mentions):
-            sql_code += args[i] + ' ' + args_type[i] + ', '
+            sql_code += args[i] + " " + args_type[i] + ", "
         else:
-            sql_code += args[i] + ' ' + args_type[i]
+            sql_code += args[i] + " " + args_type[i]
     for i in xrange(len(other_mentions)):
         if i != len(other_mentions) - 1:
-            sql_code += other_mentions[i] + ', '
+            sql_code += other_mentions[i] + ", "
         else:
             sql_code += other_mentions[i]
-    sql_code += ')'
+    sql_code += ")"
 
     return sql_code
 
@@ -100,13 +102,13 @@ class UserAlbumPhotoORM(object):
         self.open_DB()
 
         to_execute = "DELETE FROM " + db_name
-        to_execute += ' WHERE '
+        to_execute += " WHERE "
 
         to_execute += '{0} = "{1}"'.format(lst_args[0], lst_terms[0])
         # to_execute += lst_args[0] + ' = ' + lst_values[0]
 
         for i in xrange(len(lst_args[1:])):
-            to_execute += ' AND '
+            to_execute += " AND "
             to_execute += '{0} = "{1}"'.format(lst_args[i], lst_terms[i])
 
         self.current.execute(to_execute)
@@ -168,14 +170,14 @@ class UserAlbumPhotoORM(object):
         """
         self.open_DB()
 
-        to_execute = 'SELECT * FROM ' + db_name
-        to_execute += ' WHERE '
+        to_execute = "SELECT * FROM " + db_name
+        to_execute += " WHERE "
 
         to_execute += '{0} = "{1}"'.format(lst_args[0], lst_values[0])
         # to_execute += lst_args[0] + ' = ' + lst_values[0]
 
         for i in xrange(len(lst_args[1:])):
-            to_execute += ' AND '
+            to_execute += " AND "
             to_execute += '{0} = "{1}"'.format(lst_args[i], lst_values[i])
 
         self.current.execute(to_execute)
@@ -187,10 +189,10 @@ class UserAlbumPhotoORM(object):
         self.close_DB()
 
         if data:
-            print 't'
+            print("t")
             return True
         else:
-            print 'f'
+            print("f")
             return False
 
     def get_row_DB(self, db_name, lst_args, lst_values):
@@ -203,14 +205,14 @@ class UserAlbumPhotoORM(object):
         """
         self.open_DB()
 
-        to_execute = 'SELECT * FROM ' + db_name
-        to_execute += ' WHERE '
+        to_execute = "SELECT * FROM " + db_name
+        to_execute += " WHERE "
 
         to_execute += '{0} = "{1}"'.format(lst_args[0], lst_values[0])
         # to_execute += lst_args[0] + ' = ' + lst_values[0]
 
         for i in xrange(len(lst_args[1:])):
-            to_execute += ' AND '
+            to_execute += " AND "
             to_execute += '{0} = "{1}"'.format(lst_args[i], lst_values[i])
 
         self.current.execute(to_execute)
@@ -229,7 +231,7 @@ class UserAlbumPhotoORM(object):
                 else:
                     data_lst.append(data[0][i])
 
-        print data_lst
+        print(data_lst)
         return data_lst
 
     def get_all_rows_DB(self, db_name, lst_args, lst_values):
@@ -242,14 +244,14 @@ class UserAlbumPhotoORM(object):
         """
         self.open_DB()
 
-        to_execute = 'SELECT * FROM ' + db_name
-        to_execute += ' WHERE '
+        to_execute = "SELECT * FROM " + db_name
+        to_execute += " WHERE "
 
         to_execute += '{0} = "{1}"'.format(lst_args[0], lst_values[0])
         # to_execute += lst_args[0] + ' = ' + lst_values[0]
 
         for i in xrange(len(lst_args[1:])):
-            to_execute += ' AND '
+            to_execute += " AND "
             to_execute += '{0} = "{1}"'.format(lst_args[i], lst_values[i])
 
         self.current.execute(to_execute)
@@ -271,7 +273,7 @@ class UserAlbumPhotoORM(object):
                     row_list.append(data[j][i])
             data_lst.append(row_list)
 
-        print data_lst
+        print(data_lst)
         return data_lst
 
     def create_photos_DB(self):
@@ -279,37 +281,68 @@ class UserAlbumPhotoORM(object):
         this function is responsible to make the str of create the photos db sql code
         :return: str photos code
         """
-        return create_db('photos', ['id', 'album_id', 'creator_id', 'file_name', 'creating_time'],
-                         ['INTEGER PRIMARY KEY', 'INTEGER NOT NULL', 'INTEGER NOT NULL', 'TEXT NOT NULL',
-                          'TEXT NOT NULL'], ['FOREIGN KEY (album_id) REFERENCES albums (id)',
-                                             'FOREIGN KEY (creator_id) REFERENCES users (id)'])
+        return create_db(
+            "photos",
+            ["id", "album_id", "creator_id", "file_name", "creating_time"],
+            [
+                "INTEGER PRIMARY KEY",
+                "INTEGER NOT NULL",
+                "INTEGER NOT NULL",
+                "TEXT NOT NULL",
+                "TEXT NOT NULL",
+            ],
+            [
+                "FOREIGN KEY (album_id) REFERENCES albums (id)",
+                "FOREIGN KEY (creator_id) REFERENCES users (id)",
+            ],
+        )
 
     def create_albums_DB(self):
         """
         this function is responsible to make the str of create the albums db sql code
         :return: str albums code
         """
-        return create_db('albums', ['id', 'creator_id', 'album_name', 'editing_time', 'creating_time'],
-                         ['INTEGER PRIMARY KEY', 'INTEGER NOT NULL', 'TEXT NOT NULL', 'TEXT NOT NULL', 'TEXT NOT NULL'],
-                         ['FOREIGN KEY (creator_id) REFERENCES users (id)'])
+        return create_db(
+            "albums",
+            ["id", "creator_id", "album_name", "editing_time", "creating_time"],
+            [
+                "INTEGER PRIMARY KEY",
+                "INTEGER NOT NULL",
+                "TEXT NOT NULL",
+                "TEXT NOT NULL",
+                "TEXT NOT NULL",
+            ],
+            ["FOREIGN KEY (creator_id) REFERENCES users (id)"],
+        )
 
     def create_users_DB(self):
         """
         this function is responsible to make the str of create the users db sql code
         :return: str user code
         """
-        return create_db('users', ['id', 'username', 'password', 'last_online', 'full_name', 'birth_date'],
-                         ['INTEGER PRIMARY KEY', 'TEXT UNIQUE', 'TEXT NOT NULL', 'TEXT NOT NULL',
-                          'TEXT NOT NULL', 'TEXT NOT NULL'])
+        return create_db(
+            "users",
+            ["id", "username", "password", "last_online", "full_name", "birth_date"],
+            [
+                "INTEGER PRIMARY KEY",
+                "TEXT UNIQUE",
+                "TEXT NOT NULL",
+                "TEXT NOT NULL",
+                "TEXT NOT NULL",
+                "TEXT NOT NULL",
+            ],
+        )
 
 
 class Photo(object):
     """
-        this class is responsible for saving the photos on the server with all their information
+    this class is responsible for saving the photos on the server with all their information
 
     """
 
-    def __init__(self, photo_id=None, album_id=None, creator_id=None, creating_time=None, file_name=None):
+    def __init__(
+        self, photo_id=None, album_id=None, creator_id=None, creating_time=None, file_name=None
+    ):
         self.photo_id = photo_id
         self.album_id = album_id
         self.creator_id = creator_id
@@ -326,18 +359,21 @@ class Photo(object):
         self.db = UserAlbumPhotoORM()
 
         # insert into the database
-        self.db.insert_DB('photos', ["id", "album_id", "creator_id", "creating_time", "file_name"],
-                          [self.photo_id, self.album_id, self.creator_id, self.creating_time, self.file_name])
+        self.db.insert_DB(
+            "photos",
+            ["id", "album_id", "creator_id", "creating_time", "file_name"],
+            [self.photo_id, self.album_id, self.creator_id, self.creating_time, self.file_name],
+        )
 
     def del_photo(self):
         # delete from the database
-        self.db.delete_DB('photos', ["id"], [str(self.photo_id)])
+        self.db.delete_DB("photos", ["id"], [str(self.photo_id)])
 
         # DO NOT FORGET: get the photo out also from the local program memory
 
     def change_file_name(self, file_name):
         # update database
-        self.db.update_DB('photos', "id", str(self.photo_id), "file_name", file_name)
+        self.db.update_DB("photos", "id", str(self.photo_id), "file_name", file_name)
 
         # update object
         self.file_name = file_name
@@ -347,11 +383,13 @@ class Photo(object):
 
 class Album(object):
     """
-        this class is responsible for saving the albums and their information
+    this class is responsible for saving the albums and their information
 
     """
 
-    def __init__(self, album_id=None, creator_id=None, album_name=None, editing_time=None, crating_time=None):
+    def __init__(
+        self, album_id=None, creator_id=None, album_name=None, editing_time=None, crating_time=None
+    ):
         self.album_id = album_id
         self.creator_id = creator_id
         self.album_name = album_name
@@ -368,18 +406,23 @@ class Album(object):
         self.db = UserAlbumPhotoORM()
 
         # insert into the database
-        self.db.insert_DB('albums', ["id", "creator_id", "album_name", "editing_time", "creating_time"],
-                          [self.album_id, self.creator_id, self.album_name, self.editing_time, self.crating_time])
+        self.db.insert_DB(
+            "albums",
+            ["id", "creator_id", "album_name", "editing_time", "creating_time"],
+            [self.album_id, self.creator_id, self.album_name, self.editing_time, self.crating_time],
+        )
 
     def del_album(self):
         # delete from the database
-        self.db.delete_DB('albums', ["creator_id", "album_name"], [self.creator_id, self.album_name])
+        self.db.delete_DB(
+            "albums", ["creator_id", "album_name"], [self.creator_id, self.album_name]
+        )
 
         # DO NOT FORGET: get the album out also from the local program memory
 
     def change_album_name(self, album_name):
         # update database
-        self.db.update_DB('albums', "id", str(self.album_id), "album_name", album_name)
+        self.db.update_DB("albums", "id", str(self.album_id), "album_name", album_name)
 
         # update object
         self.album_name = album_name
@@ -389,12 +432,19 @@ class Album(object):
 
 class User(object):
     """
-        this class is responsible for saving the users and their information
+    this class is responsible for saving the users and their information
 
     """
 
-    def __init__(self, user_id=None, username=None, password=None, last_online=None, full_name=None,
-                 creating_date=None):
+    def __init__(
+        self,
+        user_id=None,
+        username=None,
+        password=None,
+        last_online=None,
+        full_name=None,
+        creating_date=None,
+    ):
         self.user_id = user_id
         self.username = username
         self.password = password
@@ -404,8 +454,8 @@ class User(object):
         self.db = UserAlbumPhotoORM()
 
     def register(self, user_id, username, password, full_name, birth_date):
-        if self.db.exsists_DB('users', ['username'], [username]):
-            print 'not reg'
+        if self.db.exsists_DB("users", ["username"], [username]):
+            print("not reg")
             return False
         else:
             self.user_id = user_id
@@ -417,22 +467,31 @@ class User(object):
             self.db = UserAlbumPhotoORM()
 
             # insert into the database
-            self.db.insert_DB('users', ["id", "username", "password", "last_online", "full_name", "birth_date"],
-                              [self.user_id, self.username, self.password, self.last_online, self.full_name,
-                               self.birth_date])
-            print 'reg'
+            self.db.insert_DB(
+                "users",
+                ["id", "username", "password", "last_online", "full_name", "birth_date"],
+                [
+                    self.user_id,
+                    self.username,
+                    self.password,
+                    self.last_online,
+                    self.full_name,
+                    self.birth_date,
+                ],
+            )
+            print("reg")
             return True
 
     def del_user(self):
         # delete from the database
-        self.db.delete_DB('users', "id", str(self.user_id))
+        self.db.delete_DB("users", "id", str(self.user_id))
 
         # DO NOT FORGET: get the album out also from the local program memory
 
     def login(self, username, password):
         # print username, password
-        if self.db.exsists_DB('users', ['username', 'password'], [username, password]):
-            user_data = self.db.get_row_DB('users', ['username', 'password'], [username, password])
+        if self.db.exsists_DB("users", ["username", "password"], [username, password]):
+            user_data = self.db.get_row_DB("users", ["username", "password"], [username, password])
             self.user_id = user_data[0]
             self.username = user_data[1]
             self.password = user_data[2]
@@ -440,24 +499,24 @@ class User(object):
             self.full_name = user_data[4]
             self.birth_date = user_data[5]
 
-            self.db.update_DB('users', 'username', self.username, "last_online", self.last_online)
+            self.db.update_DB("users", "username", self.username, "last_online", self.last_online)
             return True
         return False
         # self.db.get_row_DB('users', ['username', 'password'], [username, password])
 
     def get_albums_by_creator(self, creator_id):
-        return self.db.get_all_rows_DB('albums', ['creator_id'], [creator_id])
+        return self.db.get_all_rows_DB("albums", ["creator_id"], [creator_id])
 
     def get_photos_in_album(self, album_name):
         album_id = self.get_album_id_by_album_name(album_name)
-        return self.db.get_all_rows_DB('photos', ['album_id'], [album_id])
+        return self.db.get_all_rows_DB("photos", ["album_id"], [album_id])
 
     def get_album_id_by_album_name(self, album_name):
-        return self.db.get_row_DB('albums', ['album_name'], [album_name])[0]
+        return self.db.get_row_DB("albums", ["album_name"], [album_name])[0]
 
     def change_username(self, username):
         # update database
-        self.db.update_DB('users', "id", str(self.user_id), "username", username)
+        self.db.update_DB("users", "id", str(self.user_id), "username", username)
 
         # update object
         self.username = username
@@ -466,28 +525,28 @@ class User(object):
 
     def change_password(self, password):
         # update database
-        self.db.update_DB('users', "id", str(self.user_id), "password", password)
+        self.db.update_DB("users", "id", str(self.user_id), "password", password)
 
         # update object
         self.password = password
 
     def change_bith_date(self, birth_date):
         # update database
-        self.db.update_DB('users', "id", str(self.user_id), "birth_date", birth_date)
+        self.db.update_DB("users", "id", str(self.user_id), "birth_date", birth_date)
 
         # update object
         self.birth_date = birth_date
 
     def change_full_name(self, full_name):
         # update database
-        self.db.update_DB('users', "id", str(self.user_id), "full_name", full_name)
+        self.db.update_DB("users", "id", str(self.user_id), "full_name", full_name)
 
         # update object
         self.full_name = full_name
 
     def update_last_online(self, last_online):
         # update database
-        self.db.update_DB('users', "id", str(self.user_id), "last_online", last_online)
+        self.db.update_DB("users", "id", str(self.user_id), "last_online", last_online)
 
         # update object
         self.last_online = last_online
@@ -497,5 +556,5 @@ def main():
     pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -35,9 +35,10 @@ From repo root:
 ```
 
 This runs:
-- Android formatter: `spotlessApply`
+- Android formatter: `spotlessApply` (Spotless + `google-java-format`)
 - Android linter: `lintDebug`
 - Android unit tests: `testDebugUnitTest`
+- Server formatter: `black`
 - Server tests: `python -m unittest`
 
 ## Server dependencies
