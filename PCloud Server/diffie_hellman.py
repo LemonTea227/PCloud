@@ -7,7 +7,6 @@ from pcloud_protocol import (
     recv_by_protocol,
     build_message,
     get_data_from_message,
-    get_header_from_message,
 )
 
 REQUEST = "0"
@@ -18,7 +17,7 @@ def _to_16_byte_key(num):
     key_bytes = ["\x00"] * 16
     for i in range(15, -1, -1):
         key_bytes[i] = chr(int(num % 256))
-        num /= 256
+        num //= 256
     return "".join(key_bytes)
 
 
@@ -28,7 +27,7 @@ def diffie_hellman_server(sock):
     :param sock: the socket :type socket._socketobject
     :return: an aes key the same as the client
     """
-    P = long(286134470859861285423767856156329902081)
+    P = int(286134470859861285423767856156329902081)
     G = getrandbits(128)
 
     send_by_protocol(sock, build_message("GENERATOR", CONFIRM, str(G)))
@@ -46,7 +45,7 @@ def diffie_hellman_server(sock):
     if mes == "":
         sock.close()
         return
-    other_score = long(get_data_from_message(mes))
+    other_score = int(get_data_from_message(mes))
 
     send_by_protocol(sock, build_message("SCORE", CONFIRM, score))
 
@@ -60,8 +59,8 @@ def diffie_hellman_client(sock):
     :param sock: the socket :type socket._socketobject
     :return: an aes key the same as the server
     """
-    P = long(286134470859861285423767856156329902081)
-    G = long(recv_by_protocol(sock)[-1])
+    P = int(286134470859861285423767856156329902081)
+    G = int(get_data_from_message(recv_by_protocol(sock)))
 
     my_num = randint(1, 20303)
 
@@ -69,7 +68,7 @@ def diffie_hellman_client(sock):
     send_by_protocol(sock, build_message("SCORE", CONFIRM, data=score))
 
     mes = recv_by_protocol(sock)
-    other_score = long(mes[-1])
+    other_score = int(get_data_from_message(mes))
 
     aes_key_num = (other_score**my_num) % P
     return _to_16_byte_key(aes_key_num)

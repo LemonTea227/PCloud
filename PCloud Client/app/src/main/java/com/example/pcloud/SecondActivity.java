@@ -241,7 +241,8 @@ public class SecondActivity extends AppCompatActivity implements ReceiveMessages
         e.printStackTrace();
       }
       if (imageToUpload == null) {
-        Toast.makeText(getApplicationContext(), getString(R.string.upload_photo_error), Toast.LENGTH_SHORT)
+        Toast.makeText(
+                getApplicationContext(), getString(R.string.upload_photo_error), Toast.LENGTH_SHORT)
             .show();
         return;
       }

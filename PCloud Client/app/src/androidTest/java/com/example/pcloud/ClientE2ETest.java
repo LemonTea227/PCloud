@@ -21,8 +21,8 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.SystemClock;
 import androidx.test.core.app.ActivityScenario;
-import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.espresso.contrib.RecyclerViewActions;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
 import androidx.test.runner.lifecycle.Stage;
@@ -108,7 +108,7 @@ public class ClientE2ETest {
     assertTrue(server.hasAlbum(albumName));
 
     onView(withId(R.id.albumMainRecyclerView))
-      .perform(RecyclerViewActions.actionOnItemAtPosition(0, click()));
+        .perform(RecyclerViewActions.actionOnItemAtPosition(0, click()));
     waitForView(withId(R.id.photosSecondRecyclerView), 8000);
 
     triggerPhotoPickResultOnSecondActivity();
@@ -170,8 +170,7 @@ public class ClientE2ETest {
     InstrumentationRegistry.getInstrumentation()
         .runOnMainSync(
             () ->
-                ((SecondActivity) activity)
-                    .onActivityResult(1, Activity.RESULT_OK, resultIntent));
+                ((SecondActivity) activity).onActivityResult(1, Activity.RESULT_OK, resultIntent));
   }
 
   private Uri createTempImageUri() {
@@ -196,7 +195,8 @@ public class ClientE2ETest {
         .runOnMainSync(
             () -> {
               Collection<Activity> resumed =
-                  ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED);
+                  ActivityLifecycleMonitorRegistry.getInstance()
+                      .getActivitiesInStage(Stage.RESUMED);
               if (!resumed.isEmpty()) {
                 current[0] = resumed.iterator().next();
               }

@@ -12,9 +12,6 @@ from pcloud_protocol import (
     get_data_from_message,
 )
 import os
-from os import listdir
-from os.path import isfile, join
-import base64
 import hashlib
 from diffie_hellman import diffie_hellman_server
 
