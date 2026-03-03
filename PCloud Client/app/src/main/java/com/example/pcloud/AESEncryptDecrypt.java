@@ -1,7 +1,6 @@
 package com.example.pcloud;
 
-import android.os.Build;
-import androidx.annotation.RequiresApi;
+import android.util.Base64;
 import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.NoSuchAlgorithmException;
@@ -19,7 +18,6 @@ public class AESEncryptDecrypt {
    * @param key byte array of the key to the AES encryption / decryption
    * @return base64 encoded String of the encrypted text
    */
-  @RequiresApi(api = Build.VERSION_CODES.O)
   public static String encrypt(String input, byte[] key) {
     byte[] crypted = null;
     try {
@@ -34,9 +32,7 @@ public class AESEncryptDecrypt {
       Cipher cipher = Cipher.getInstance("AES/ECB/NoPadding");
       cipher.init(Cipher.ENCRYPT_MODE, skey);
       crypted = cipher.doFinal(input.getBytes());
-      java.util.Base64.Encoder encoder = java.util.Base64.getEncoder();
-
-      return new String(encoder.encodeToString(crypted));
+      return Base64.encodeToString(crypted, Base64.NO_WRAP);
 
     } catch (NoSuchAlgorithmException
         | InvalidKeyException
@@ -56,17 +52,15 @@ public class AESEncryptDecrypt {
    * @param key byte array of the key to the AES encryption / decryption
    * @return a String of the decrypted text
    */
-  @RequiresApi(api = Build.VERSION_CODES.O)
   public static String decrypt(String input, byte[] key) {
     if (!input.equals("")) {
       byte[] output = null;
-      java.util.Base64.Decoder decoder = java.util.Base64.getDecoder();
       SecretKeySpec skey = new SecretKeySpec(key, "AES");
 
       try {
         Cipher cipher = Cipher.getInstance("AES/ECB/NoPadding");
         cipher.init(Cipher.DECRYPT_MODE, (Key) skey);
-        output = cipher.doFinal(decoder.decode(input));
+        output = cipher.doFinal(Base64.decode(input, Base64.NO_WRAP));
         output = subNulls(output);
         return new String(output);
       } catch (NoSuchAlgorithmException

@@ -40,7 +40,8 @@ public class SplashActivity extends AppCompatActivity implements ReceiveMessages
             new Runnable() {
               @Override
               public void run() {
-                while (MySocket.getInput() == null) ;
+                while (MySocket.getInput() == null)
+                  ;
                 new Thread(new ReceiveMessagesThread()).start();
                 //                while(G == null);
                 //                BigInteger score = G.pow(myNum).mod(P);

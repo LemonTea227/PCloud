@@ -24,7 +24,8 @@ public class AlbumAdapter extends RecyclerView.Adapter<AlbumAdapter.AlbumViewHol
   public class AlbumViewHolder extends RecyclerView.ViewHolder {
     ImageView albumImageView;
     TextView albumTextView;
-    ConstraintLayout albumLayout;;
+    ConstraintLayout albumLayout;
+    ;
 
     public AlbumViewHolder(@NonNull View itemView) {
       super(itemView);

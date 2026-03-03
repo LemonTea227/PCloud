@@ -10,6 +10,7 @@ $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $serverDir = Join-Path $repoRoot "PCloud Server"
 $clientDir = Join-Path $repoRoot "PCloud Client"
 $socketFile = Join-Path $clientDir "app/src/main/java/com/example/pcloud/MySocket.java"
+$gradlePropertiesFile = Join-Path $clientDir "gradle.properties"
 
 function Ensure-Command([string]$name) {
     if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
@@ -17,8 +18,26 @@ function Ensure-Command([string]$name) {
     }
 }
 
+function Get-ProjectJavaHome {
+    if ($env:JAVA_HOME -and (Test-Path $env:JAVA_HOME)) {
+        return $env:JAVA_HOME
+    }
+
+    if (Test-Path $gradlePropertiesFile) {
+        $javaHomeLine = (Get-Content $gradlePropertiesFile | Where-Object { $_ -match '^org\.gradle\.java\.home=' } | Select-Object -First 1)
+        if ($javaHomeLine) {
+            $javaHome = $javaHomeLine.Substring('org.gradle.java.home='.Length)
+            if (Test-Path $javaHome) {
+                return $javaHome
+            }
+        }
+    }
+
+    return $null
+}
+
 function Test-Java11OrNewer {
-    $javaOutput = & java -version 2>&1
+    $javaOutput = cmd /c "java -version 2>&1"
     $versionLine = $javaOutput | Select-Object -First 1
 
     if ($versionLine -match 'version "(\d+)') {
@@ -30,6 +49,14 @@ function Test-Java11OrNewer {
     }
 
     return $false
+}
+
+$projectJavaHome = Get-ProjectJavaHome
+if ($projectJavaHome) {
+    $env:JAVA_HOME = $projectJavaHome
+    if ($env:Path -notlike "$projectJavaHome\\bin*") {
+        $env:Path = "$projectJavaHome\\bin;" + $env:Path
+    }
 }
 
 function Set-ClientSocketConfig([string]$file, [string]$socketHost, [int]$socketPort) {
@@ -98,13 +125,29 @@ try {
     Push-Location $clientDir
     try {
         if (-not $SkipInstall) {
-            .\gradlew.bat installDebug
+            if (Get-Command adb -ErrorAction SilentlyContinue) {
+                $adbDevices = adb devices | Select-String -Pattern "\tdevice$"
+                if ($adbDevices) {
+                    .\gradlew.bat installDebug
+                } else {
+                    .\gradlew.bat assembleDebug
+                    Write-Host "No connected device/emulator detected. Built debug APK instead of installing."
+                }
+            } else {
+                .\gradlew.bat assembleDebug
+                Write-Host "adb not found; built debug APK instead of installing."
+            }
         }
         if (Get-Command adb -ErrorAction SilentlyContinue) {
-            adb shell am start -n com.example.pcloud/.SplashActivity | Out-Null
-            Write-Host "Client launched via adb."
+            $adbDevices = adb devices | Select-String -Pattern "\tdevice$"
+            if ($adbDevices) {
+                adb shell am start -n com.example.pcloud/.SplashActivity | Out-Null
+                Write-Host "Client launched via adb."
+            } else {
+                Write-Host "No connected device/emulator; launch APK manually after connecting a device."
+            }
         } else {
-            Write-Host "adb not found; install completed, launch the app manually on device/emulator."
+            Write-Host "adb not found; launch the app manually after installing APK on a device/emulator."
         }
     } finally {
         Pop-Location

@@ -265,10 +265,15 @@ public class SecondActivity extends AppCompatActivity implements ReceiveMessages
       Cursor cursor = getContentResolver().query(uri, null, null, null, null);
       try {
         if (cursor != null && cursor.moveToFirst()) {
-          result = cursor.getString(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME));
+          int displayNameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+          if (displayNameIndex >= 0) {
+            result = cursor.getString(displayNameIndex);
+          }
         }
       } finally {
-        cursor.close();
+        if (cursor != null) {
+          cursor.close();
+        }
       }
     }
     if (result == null) {

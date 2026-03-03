@@ -16,6 +16,7 @@ import java.util.Objects;
 
 public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMessagesListener {
   PhotoView photoViewerPhotoView;
+
   //    ImageView photoViewerImageView;
 
   @Override
