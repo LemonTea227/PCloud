@@ -51,9 +51,9 @@ public class MySocket {
 
     private static BufferedReader input;
 
-    private static String INERIP = "192.168.0.227";
+    private static String INERIP = "10.0.2.2";
 
-    private static String IP = "87.71.152.149"; // "87.71.152.149" - port forwarding address
+    private static String IP = "10.0.2.2"; // configured by run.ps1
 
     private static int Port = 22703;
 

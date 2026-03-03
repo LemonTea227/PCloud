@@ -5,7 +5,6 @@ from datetime import datetime
 from random import randint, getrandbits
 
 import pcloud_server_db
-from PIL import Image
 from pcloud_protocol import send_by_protocol, recv_by_protocol, build_message, get_header_from_message, \
     get_data_from_message
 import os
@@ -16,7 +15,7 @@ from diffie_hellman import diffie_hellman_server
 import hashlib
 
 IP = '0.0.0.0'
-PORT = 22704
+PORT = 22703
 SEND = {}
 THREAD = []
 USERS = {}
@@ -36,32 +35,41 @@ PHOTO_ERROR = '207'
 USER_KIND = 1
 ALBUM_KIND = 2
 PHOTO_KIND = 3
-USER_ID_FILE = 'user_id.txt'
-ALBUM_ID_FILE = 'album_id.txt'
-PHOTO_ID_FILE = 'photo_id.txt'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+USER_ID_FILE = os.path.join(BASE_DIR, 'user_id.txt')
+ALBUM_ID_FILE = os.path.join(BASE_DIR, 'album_id.txt')
+PHOTO_ID_FILE = os.path.join(BASE_DIR, 'photo_id.txt')
 
-PATH_TO_FILES = "\\Coding\\python\\project 2021\\PCloud Server\\proj_files"
+PATH_TO_FILES = os.path.join(BASE_DIR, 'proj_files')
 
 
 def main():
+    if not os.path.isdir(PATH_TO_FILES):
+        os.makedirs(PATH_TO_FILES)
+
     # open socket with client
     server_socket = socket.socket()
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind((IP, PORT))
-    server_socket.listen(1)
+    server_socket.listen(5)
 
-    while True:
-        # open socket with client
-        client_socket, address = server_socket.accept()
-        print '(%s) connected to: SOCKET-%s : ADDRESS-%s' % (datetime.now(), client_socket, address)
-        client_socket.settimeout(0.1)
-        SEND[client_socket] = []
-        t = threading.Thread(target=async_send_receive, args=(client_socket,))
-        t.start()
-        THREAD.append(t)
-
-    server_socket.close()
-    for t in THREAD:
-        t.join()
+    try:
+        while True:
+            # open socket with client
+            client_socket, address = server_socket.accept()
+            print '(%s) connected to: SOCKET-%s : ADDRESS-%s' % (datetime.now(), client_socket, address)
+            client_socket.settimeout(0.1)
+            SEND[client_socket] = []
+            t = threading.Thread(target=async_send_receive, args=(client_socket,))
+            t.daemon = True
+            t.start()
+            THREAD.append(t)
+    except KeyboardInterrupt:
+        print 'Shutting down server...'
+    finally:
+        server_socket.close()
+        for t in THREAD:
+            t.join()
 
 
 def generate_id(kind):

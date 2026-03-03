@@ -1,0 +1,101 @@
+param(
+    [switch]$SkipClient,
+    [switch]$SkipInstall,
+    [string]$ServerHost = "10.0.2.2",
+    [int]$ServerPort = 22703
+)
+
+$ErrorActionPreference = "Stop"
+$repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$serverDir = Join-Path $repoRoot "PCloud Server"
+$clientDir = Join-Path $repoRoot "PCloud Client"
+$socketFile = Join-Path $clientDir "app/src/main/java/com/example/pcloud/MySocket.java"
+
+function Ensure-Command([string]$name) {
+    if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
+        throw "Required command '$name' was not found in PATH."
+    }
+}
+
+function Set-ClientSocketConfig([string]$file, [string]$socketHost, [int]$socketPort) {
+    $raw = Get-Content -Raw -Path $file
+    $updated = $raw -replace 'private static String INERIP = ".*?";', "private static String INERIP = `"$socketHost`";"
+    $updated = $updated -replace 'private static String IP = ".*?";\s*//.*', "private static String IP = `"$socketHost`"; // configured by run.ps1"
+    $updated = $updated -replace 'private static int Port = \d+;', "private static int Port = $socketPort;"
+    if ($updated -ne $raw) {
+        Set-Content -Path $file -Value $updated -NoNewline
+    }
+}
+
+function Test-AndroidSdk([string]$clientPath) {
+    if ($env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT)) {
+        return $true
+    }
+
+    $localPropertiesFile = Join-Path $clientPath "local.properties"
+    if (-not (Test-Path $localPropertiesFile)) {
+        return $false
+    }
+
+    $sdkLine = (Get-Content $localPropertiesFile | Where-Object { $_ -match '^sdk\.dir=' } | Select-Object -First 1)
+    if (-not $sdkLine) {
+        return $false
+    }
+
+    $sdkPath = $sdkLine.Substring(8)
+    $sdkPath = $sdkPath -replace '\\\\', '\\'
+    $sdkPath = $sdkPath -replace '\\:', ':'
+    return (Test-Path $sdkPath)
+}
+
+Write-Host "[1/4] Validating prerequisites..."
+Ensure-Command py
+Ensure-Command java
+
+Write-Host "[2/4] Starting server..."
+$serverProcess = Start-Process -FilePath "py" -ArgumentList "-2", "pcloud_server.py" -WorkingDirectory $serverDir -PassThru
+$keepServerRunning = $false
+Start-Sleep -Seconds 2
+if ($serverProcess.HasExited) {
+    throw "Server process exited immediately. Check 'PCloud Server' dependencies and Python 2 availability."
+}
+Write-Host "Server PID: $($serverProcess.Id)"
+
+try {
+    if ($SkipClient) {
+        Write-Host "Client step skipped. Server is running."
+        $keepServerRunning = $true
+        return
+    }
+
+    Write-Host "[3/4] Updating client socket target (host=$ServerHost, port=$ServerPort)..."
+    Set-ClientSocketConfig -file $socketFile -socketHost $ServerHost -socketPort $ServerPort
+
+    Write-Host "[4/4] Building/installing Android client..."
+    if (-not (Test-AndroidSdk -clientPath $clientDir)) {
+        throw "Android SDK path is not configured. Set ANDROID_SDK_ROOT or fix sdk.dir in 'PCloud Client/local.properties'."
+    }
+
+    Push-Location $clientDir
+    try {
+        if (-not $SkipInstall) {
+            .\gradlew.bat installDebug
+        }
+        if (Get-Command adb -ErrorAction SilentlyContinue) {
+            adb shell am start -n com.example.pcloud/.SplashActivity | Out-Null
+            Write-Host "Client launched via adb."
+        } else {
+            Write-Host "adb not found; install completed, launch the app manually on device/emulator."
+        }
+    } finally {
+        Pop-Location
+    }
+
+    $keepServerRunning = $true
+    Write-Host "Done. Server running in background (PID $($serverProcess.Id)). Use Stop-Process -Id $($serverProcess.Id) to stop it."
+} finally {
+    if (-not $keepServerRunning -and $serverProcess -and -not $serverProcess.HasExited) {
+        Stop-Process -Id $serverProcess.Id
+        Write-Host "Stopped server PID $($serverProcess.Id) after setup failure."
+    }
+}

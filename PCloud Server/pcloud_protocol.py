@@ -1,9 +1,21 @@
-import AES_encrypt_decrypt
+from __future__ import print_function
 
 DEBUG = True
 ENCRYPT = False
 MAKE_LOG = True
 LOG_FILE = 'log.txt'
+
+
+def _to_bytes(value):
+    if isinstance(value, bytes):
+        return value
+    return value.encode('utf-8')
+
+
+def _to_text(value):
+    if isinstance(value, bytes):
+        return value.decode('utf-8')
+    return value
 
 
 def build_message(name, type, message='', aes_key=None):
@@ -18,6 +30,7 @@ def build_message(name, type, message='', aes_key=None):
     built_message += 'name:%s\n' % name
     built_message += 'type:%s\n' % type
     if aes_key and message:
+        import AES_encrypt_decrypt
         message = AES_encrypt_decrypt.encrypt(message, aes_key)
     built_message += 'size:%s\n' % len(message)
     built_message += '\n'
@@ -59,11 +72,11 @@ def get_photo_from_message(message):
 
 
 def send_by_protocol(sock, message, aes_key=None):
-    sock.send(message)
+    sock.send(_to_bytes(message))
     if DEBUG and message != "" and len(message) <= 100:
-        print "\nSent(%s)>>>%s" % (len(message), message)
+        print("\nSent(%s)>>>%s" % (len(message), message))
     elif DEBUG and message != "":
-        print "\nSent(%s)>>>%s" % (len(message), message[:100])
+        print("\nSent(%s)>>>%s" % (len(message), message[:100]))
     if MAKE_LOG:
         with open(LOG_FILE, 'a') as f:
             f.write("\nSent(%s)>>>%s" % (len(message), message))
@@ -74,9 +87,10 @@ def recv_by_protocol(sock, aes_key=None):
     data_len = 0
     while True:
         received = sock.recv(1)
-        if received == "":
+        if received in ("", b""):
             str_headers = ""
             break
+        received = _to_text(received)
         str_headers += received
         if len(str_headers) >= 2:
             if str_headers[-2:] == '\n\n':
@@ -89,9 +103,10 @@ def recv_by_protocol(sock, aes_key=None):
             data_len = int(data_size) + 5
             while len(data) < data_len:
                 received = sock.recv(data_len - len(data))
-                if received == "":
+                if received in ("", b""):
                     data = ""
                     break
+                received = _to_text(received)
                 data += received
 
     # if aes_key and data != '':
@@ -101,9 +116,9 @@ def recv_by_protocol(sock, aes_key=None):
 
     message = str_headers + data
     if DEBUG and data_size != "" and len(data) <= 100:
-        print "\nRecv(%s)>>>%s" % (len(message), message)
+        print("\nRecv(%s)>>>%s" % (len(message), message))
     elif DEBUG and len(data) > 100:
-        print "\nRecv(%s)>>>%s" % (len(message), message[:100])
+        print("\nRecv(%s)>>>%s" % (len(message), message[:100]))
     if MAKE_LOG:
         with open(LOG_FILE, 'a') as f:
             f.write("\nRecv(%s)>>>%s" % (len(message), message))
