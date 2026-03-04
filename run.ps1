@@ -19,6 +19,20 @@ function Ensure-Command([string]$name) {
     }
 }
 
+function Stop-StalePCloudServers {
+    try {
+        $stale = Get-CimInstance Win32_Process -ErrorAction Stop |
+            Where-Object { $_.Name -eq 'python.exe' -and $_.CommandLine -match 'pcloud_server\.py' }
+        foreach ($proc in $stale) {
+            if ($proc.ProcessId) {
+                Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+                Write-Host "Stopped stale server process PID $($proc.ProcessId)."
+            }
+        }
+    } catch {
+    }
+}
+
 function Get-Python2Executable {
     $pyCommand = Get-Command py -ErrorAction SilentlyContinue
     if ($pyCommand) {
@@ -393,6 +407,7 @@ if (-not $SkipClient) {
 }
 
 Write-Host "[4/4] Starting server..."
+Stop-StalePCloudServers
 if ($BackgroundServer) {
     $serverProcess = Start-Process -FilePath $python2Exe -ArgumentList "pcloud_server.py" -WorkingDirectory $serverDir -PassThru
     Start-Sleep -Seconds 2

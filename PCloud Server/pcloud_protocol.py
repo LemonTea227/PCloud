@@ -47,7 +47,7 @@ def build_message(name, type, message="", aes_key=None):
     if aes_key and message:
         import AES_encrypt_decrypt
 
-        message = AES_encrypt_decrypt.encrypt(message, aes_key)
+        message = AES_encrypt_decrypt.encrypt(message, aes_key, encode=True)
     built_message += "size:%s\n" % len(message)
     built_message += "\n"
     built_message += "data:%s" % message
@@ -130,7 +130,7 @@ def recv_by_protocol(sock, aes_key=None):
         if encrypted_data:
             import AES_encrypt_decrypt
 
-            data = "data:" + AES_encrypt_decrypt.decrypt(encrypted_data, aes_key)
+            data = "data:" + AES_encrypt_decrypt.decrypt(encrypted_data, aes_key, decode=True)
 
     message = str_headers + data
     if DEBUG and data_size != "" and len(data) <= 100:

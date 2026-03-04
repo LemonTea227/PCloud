@@ -2,9 +2,10 @@
 
 import datetime
 import sqlite3
+import os
 
 PATH = "E:\Coding\python\project 2021"
-DBFileName = "PCloudServerDB.db"
+DBFileName = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PCloudServerDB.db")
 
 
 def create_db(db_name, args, args_type, other_mentions=None):
@@ -182,7 +183,7 @@ class UserAlbumPhotoORM(object):
 
         for i in xrange(len(lst_args[1:])):
             to_execute += " AND "
-            to_execute += '{0} = "{1}"'.format(lst_args[i], lst_values[i])
+            to_execute += '{0} = "{1}"'.format(lst_args[i + 1], lst_values[i + 1])
 
         self.current.execute(to_execute)
         self.commit()
@@ -217,7 +218,7 @@ class UserAlbumPhotoORM(object):
 
         for i in xrange(len(lst_args[1:])):
             to_execute += " AND "
-            to_execute += '{0} = "{1}"'.format(lst_args[i], lst_values[i])
+            to_execute += '{0} = "{1}"'.format(lst_args[i + 1], lst_values[i + 1])
 
         self.current.execute(to_execute)
         self.commit()
@@ -256,7 +257,7 @@ class UserAlbumPhotoORM(object):
 
         for i in xrange(len(lst_args[1:])):
             to_execute += " AND "
-            to_execute += '{0} = "{1}"'.format(lst_args[i], lst_values[i])
+            to_execute += '{0} = "{1}"'.format(lst_args[i + 1], lst_values[i + 1])
 
         self.current.execute(to_execute)
         self.commit()
@@ -474,7 +475,19 @@ class User(object):
         self.db = UserAlbumPhotoORM()
 
     def register(self, user_id, username, password, full_name, birth_date):
-        if self.db.exsists_DB("users", ["username"], [username]):
+        username = str(username).strip()
+        if username == "":
+            return False
+
+        self.db.open_DB()
+        try:
+            self.db.current.execute("SELECT 1 FROM users WHERE username = ? LIMIT 1", (username,))
+            exists = self.db.current.fetchone() is not None
+            print("REGISTER DB DEBUG user=%r exists=%r db=%r" % (username, exists, DBFileName))
+        finally:
+            self.db.close_DB()
+
+        if exists:
             print("not reg")
             return False
         else:
@@ -509,18 +522,44 @@ class User(object):
         # DO NOT FORGET: get the album out also from the local program memory
 
     def login(self, username, password):
-        # print username, password
-        if self.db.exsists_DB("users", ["username", "password"], [username, password]):
-            user_data = self.db.get_row_DB("users", ["username", "password"], [username, password])
-            self.user_id = user_data[0]
-            self.username = user_data[1]
-            self.password = user_data[2]
-            self.last_online = str(datetime.datetime.now())
-            self.full_name = user_data[4]
-            self.birth_date = user_data[5]
+        username = str(username).strip()
+        candidate_password = str(password).replace("\x00", "").replace("\r", "").strip().lower()
 
-            self.db.update_DB("users", "username", self.username, "last_online", self.last_online)
-            return True
+        self.db.open_DB()
+        try:
+            self.db.current.execute(
+                "SELECT id, username, password, last_online, full_name, birth_date FROM users WHERE username = ? LIMIT 1",
+                (username,),
+            )
+            row = self.db.current.fetchone()
+            print("LOGIN DB DEBUG user=%r row_exists=%r db=%r" % (username, row is not None, DBFileName))
+            if row:
+                user_data = []
+                for item in row:
+                    if type(item) != type(1):
+                        user_data.append(str(item))
+                    else:
+                        user_data.append(item)
+                stored_password = (
+                    str(user_data[2]).replace("\x00", "").replace("\r", "").strip().lower()
+                )
+                print("LOGIN DB DEBUG candidate=%r stored=%r" % (candidate_password, stored_password))
+                if stored_password == candidate_password:
+                    self.user_id = user_data[0]
+                    self.username = user_data[1]
+                    self.password = user_data[2]
+                    self.last_online = str(datetime.datetime.now())
+                    self.full_name = user_data[4]
+                    self.birth_date = user_data[5]
+
+                    self.db.current.execute(
+                        "UPDATE users SET last_online = ? WHERE username = ?",
+                        (self.last_online, self.username),
+                    )
+                    self.db.commit()
+                    return True
+        finally:
+            self.db.close_DB()
         return False
         # self.db.get_row_DB('users', ['username', 'password'], [username, password])
 

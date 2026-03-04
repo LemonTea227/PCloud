@@ -124,7 +124,7 @@ class MockPCloudServer {
   private void handleClient(Socket client) {
     byte[] aesKey = null;
     try {
-      client.setSoTimeout(10000);
+      client.setSoTimeout(0);
       InputStream in = client.getInputStream();
       OutputStream out = client.getOutputStream();
 

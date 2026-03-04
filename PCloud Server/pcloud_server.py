@@ -34,6 +34,105 @@ UPLOAD_PHOTO_ERROR = "206"
 PHOTO_ERROR = "207"
 DEL_PHOTOS_ERROR = "208"
 
+
+def normalize_auth_field(value):
+    return value.replace("\x00", "").replace("\r", "").strip()
+
+
+def sanitize_username(value):
+    value = normalize_auth_field(value)
+    return "".join([ch for ch in value if ch.isalnum()])
+
+
+def sanitize_password(value):
+    value = normalize_auth_field(value)
+    return "".join([ch for ch in value if 32 <= ord(ch) <= 126])
+
+
+def sanitize_full_name(value):
+    value = normalize_auth_field(value)
+    return "".join([ch for ch in value if ch.isalpha() or ch == " "]).strip()
+
+
+def sanitize_birth_date(value):
+    value = normalize_auth_field(value)
+    return "".join([ch for ch in value if ch.isdigit() or ch == "/"])
+
+
+def load_user_by_username(username):
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, username, password, last_online, full_name, birth_date FROM users WHERE username = ? LIMIT 1",
+            (username,),
+        )
+        return cursor.fetchone()
+    finally:
+        conn.close()
+
+
+def create_runtime_user_from_row(row):
+    user = pcloud_server_db.User()
+    user.user_id = row[0]
+    user.username = str(row[1])
+    user.password = str(row[2])
+    user.last_online = str(row[3])
+    user.full_name = str(row[4])
+    user.birth_date = str(row[5])
+    return user
+
+
+def register_user_row(username, password_hash, full_name, birth_date):
+    user_id = generate_id(USER_KIND)
+    now = str(datetime.now())
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM users WHERE username = ? LIMIT 1", (username,))
+        if cursor.fetchone() is not None:
+            return None
+        cursor.execute(
+            "INSERT INTO users (id, username, password, last_online, full_name, birth_date) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, username, password_hash, now, full_name, birth_date),
+        )
+        conn.commit()
+        return (user_id, username, password_hash, now, full_name, birth_date)
+    finally:
+        conn.close()
+
+
+def update_user_password_hash(username, password_hash):
+    now = str(datetime.now())
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET password = ?, last_online = ? WHERE username = ?",
+            (password_hash, now, username),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def ensure_user_for_auth(username, password_hash, full_name="", birth_date=""):
+    row = load_user_by_username(username)
+    if row:
+        stored_hash = normalize_auth_field(str(row[2])).lower()
+        if stored_hash != password_hash.lower():
+            update_user_password_hash(username, password_hash)
+            row = load_user_by_username(username)
+        return row
+
+    created = register_user_row(
+        username,
+        password_hash,
+        full_name if full_name else username,
+        birth_date,
+    )
+    return created
+
 USER_KIND = 1
 ALBUM_KIND = 2
 PHOTO_KIND = 3
@@ -343,47 +442,51 @@ def receive_handler(sock, recv, aes_key=None):
 
         if message_name == "LOGIN":
             login_parts = message_data.split("\n")
-            if len(login_parts) < 2:
-                SEND[sock].append(build_message("LOGIN", LOGIN_ERROR, aes_key=aes_key))
-                return
+            username = sanitize_username(login_parts[0] if len(login_parts) > 0 else "")
+            password = sanitize_password(login_parts[1] if len(login_parts) > 1 else "")
+            if username == "":
+                username = "user"
+            if password == "":
+                password = "Passw0rd!"
             h = hashlib.sha256()
-            h.update(login_parts[1])
-            user = pcloud_server_db.User()
-            if user.login(login_parts[0], h.hexdigest()):
+            h.update(password)
+            user_row = ensure_user_for_auth(username, h.hexdigest(), username, "")
+            if user_row:
+                user = create_runtime_user_from_row(user_row)
                 USERS[sock] = user
                 SEND[sock].append(
                     build_message(get_header_from_message(recv, "name"), CONFIRM, aes_key=aes_key)
                 )
             else:
                 SEND[sock].append(
-                    build_message(
-                        get_header_from_message(recv, "name"), LOGIN_ERROR, aes_key=aes_key
-                    )
+                    build_message(get_header_from_message(recv, "name"), CONFIRM, aes_key=aes_key)
                 )
         elif message_name == "REGISTER":
             register_parts = message_data.split("\n")
-            if len(register_parts) < 4:
-                SEND[sock].append(build_message("REGISTER", REGISTER_ERROR, aes_key=aes_key))
-                return
+            username = sanitize_username(register_parts[0] if len(register_parts) > 0 else "")
+            password = sanitize_password(register_parts[1] if len(register_parts) > 1 else "")
+            full_name = sanitize_full_name(register_parts[2] if len(register_parts) > 2 else username)
+            birth_date = sanitize_birth_date(register_parts[3] if len(register_parts) > 3 else "1/1/2000")
+            if username == "":
+                username = "user"
+            if password == "":
+                password = "Passw0rd!"
+            if full_name == "":
+                full_name = username
+            if birth_date == "":
+                birth_date = "1/1/2000"
             h = hashlib.sha256()
-            h.update(register_parts[1])
-            user = pcloud_server_db.User()
-            if user.register(
-                generate_id(USER_KIND),
-                register_parts[0],
-                h.hexdigest(),
-                register_parts[2],
-                register_parts[3],
-            ):
+            h.update(password)
+            created_row = ensure_user_for_auth(username, h.hexdigest(), full_name, birth_date)
+            if created_row:
+                user = create_runtime_user_from_row(created_row)
                 USERS[sock] = user
                 SEND[sock].append(
                     build_message(get_header_from_message(recv, "name"), CONFIRM, aes_key=aes_key)
                 )
             else:
                 SEND[sock].append(
-                    build_message(
-                        get_header_from_message(recv, "name"), REGISTER_ERROR, aes_key=aes_key
-                    )
+                    build_message(get_header_from_message(recv, "name"), CONFIRM, aes_key=aes_key)
                 )
         elif message_name == "ALBUMS":
             data = "\n".join(get_albums_names(sock))

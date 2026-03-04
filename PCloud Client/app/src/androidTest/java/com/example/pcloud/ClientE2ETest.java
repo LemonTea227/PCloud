@@ -13,9 +13,7 @@ import static androidx.test.espresso.matcher.ViewMatchers.hasDescendant;
 import static androidx.test.espresso.matcher.ViewMatchers.isChecked;
 import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
 import static androidx.test.espresso.matcher.ViewMatchers.withId;
-import static androidx.test.espresso.matcher.ViewMatchers.withParent;
 import static androidx.test.espresso.matcher.ViewMatchers.withText;
-import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertTrue;
 
@@ -26,7 +24,6 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.SystemClock;
 import android.os.ParcelFileDescriptor;
-import androidx.appcompat.widget.SearchView;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.espresso.contrib.RecyclerViewActions;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -209,10 +206,12 @@ public class ClientE2ETest {
 
     waitForView(withId(R.id.albumMainRecyclerView), 12000);
     clickMenuItem(R.id.searchAlbumsMenuItem, R.string.search);
-    onView(allOf(isAssignableFrom(android.widget.AutoCompleteTextView.class), withParent(isAssignableFrom(SearchView.class))))
+    onView(withId(androidx.appcompat.R.id.search_src_text))
       .perform(replaceText("album_079"), closeSoftKeyboard());
-    waitForView(withText("album_079"), 8000);
-    onView(withId(R.id.albumMainRecyclerView)).perform(RecyclerViewActions.actionOnItemAtPosition(0, click()));
+    onView(withId(R.id.albumMainRecyclerView))
+        .perform(RecyclerViewActions.scrollTo(hasDescendant(withText("album_079"))));
+    onView(withId(R.id.albumMainRecyclerView))
+        .perform(RecyclerViewActions.actionOnItem(hasDescendant(withText("album_079")), click()));
     waitForView(withId(R.id.photosSecondRecyclerView), 12000);
   }
 
