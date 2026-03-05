@@ -716,7 +716,21 @@ def async_send_receive(sock):
     #     except exceptions.Exception:
     #         break
 
-    aes_key = diffie_hellman_server(sock, timeout_seconds=HANDSHAKE_DEADLINE_SECONDS)
+    try:
+        aes_key = diffie_hellman_server(sock, timeout_seconds=HANDSHAKE_DEADLINE_SECONDS)
+    except socket.error:
+        try:
+            sock.close()
+        except Exception:
+            pass
+        return
+    except Exception as e:
+        print("handshake failed: %s" % str(e))
+        try:
+            sock.close()
+        except Exception:
+            pass
+        return
     if not aes_key:
         try:
             sock.close()

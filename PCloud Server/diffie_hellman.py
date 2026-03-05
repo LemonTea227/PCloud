@@ -30,7 +30,10 @@ def diffie_hellman_server(sock, timeout_seconds=10.0):
     P = int(286134470859861285423767856156329902081)
     G = getrandbits(128)
 
-    send_by_protocol(sock, build_message("GENERATOR", CONFIRM, str(G)))
+    try:
+        send_by_protocol(sock, build_message("GENERATOR", CONFIRM, str(G)))
+    except socket.error:
+        return None
 
     my_num = randint(1, 20302)
 
@@ -42,12 +45,23 @@ def diffie_hellman_server(sock, timeout_seconds=10.0):
             mes = recv_by_protocol(sock, deadline_seconds=max(1.0, float(timeout_seconds)))
         except socket.timeout:
             continue
+        except socket.error:
+            return None
     if mes == "":
-        sock.close()
-        return
-    other_score = int(get_data_from_message(mes))
+        try:
+            sock.close()
+        except Exception:
+            pass
+        return None
+    try:
+        other_score = int(get_data_from_message(mes))
+    except Exception:
+        return None
 
-    send_by_protocol(sock, build_message("SCORE", CONFIRM, score))
+    try:
+        send_by_protocol(sock, build_message("SCORE", CONFIRM, score))
+    except socket.error:
+        return None
 
     aes_key_num = (other_score**my_num) % P
     return _to_16_byte_key(aes_key_num)
