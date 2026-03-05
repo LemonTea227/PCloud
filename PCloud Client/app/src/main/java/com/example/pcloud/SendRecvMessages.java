@@ -4,15 +4,20 @@ import android.app.Activity;
 import android.content.Intent;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.net.SocketTimeoutException;
+import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 class ReceiveMessagesThread implements Runnable {
+  private static final BigInteger DH_P = new BigInteger("286134470859861285423767856156329902081");
   private static Activity activity;
   private static ReceiveMessagesListener listener;
   private static final AtomicBoolean running = new AtomicBoolean(false);
+  private boolean reconnectingHandshake = false;
+  private int reconnectSecret = 0;
 
   public static synchronized void setListener(ReceiveMessagesListener listener) {
     ReceiveMessagesThread.listener = listener;
@@ -111,6 +116,10 @@ class ReceiveMessagesThread implements Runnable {
                 ClientLogger.log(
                     "ReceiveMessagesThread", "Received message bytes=" + message.length());
 
+                if (reconnectingHandshake && handleReconnectHandshakeMessage(message)) {
+                  break;
+                }
+
                 if (activity != null && listener != null) {
                   activity.runOnUiThread(
                       new Runnable() {
@@ -138,6 +147,9 @@ class ReceiveMessagesThread implements Runnable {
           MySocket.setSocket(null);
           MySocket.setInput(null);
           MySocket.setOutput(null);
+          if (tryReconnectInPlace()) {
+            continue;
+          }
           if (activity != null) {
             Intent goSplash = new Intent(activity.getApplicationContext(), SplashActivity.class);
             goSplash.putExtra("LostConnection", true);
@@ -151,6 +163,63 @@ class ReceiveMessagesThread implements Runnable {
       running.set(false);
       MySocket.setExtraMessage("");
     }
+  }
+
+  private byte[] bigIntNumToBytes(BigInteger num) {
+    byte[] bytes = new byte[16];
+    for (int i = bytes.length - 1; i >= 0; i--) {
+      byte newNum = (byte) num.mod(new BigInteger("256")).intValue();
+      num = num.divide(new BigInteger("256"));
+      bytes[i] = newNum;
+    }
+    return bytes;
+  }
+
+  private boolean tryReconnectInPlace() {
+    try {
+      reconnectSecret = new Random().nextInt(20302) + 1;
+      MySocket.setAESkey(new byte[] {});
+      reconnectingHandshake = true;
+      new ConnectionThread().run();
+      boolean connected = MySocket.getInput() != null && MySocket.getOutput() != null;
+      if (!connected) {
+        reconnectingHandshake = false;
+      }
+      return connected;
+    } catch (Exception ex) {
+      reconnectingHandshake = false;
+      return false;
+    }
+  }
+
+  private boolean handleReconnectHandshakeMessage(String message) {
+    HandelMessage handshakeMessage = new HandelMessage(message);
+    String name = handshakeMessage.getName();
+    if (name == null) {
+      return true;
+    }
+    String upperName = name.toUpperCase();
+    if (upperName.equals("GENERATOR")) {
+      try {
+        BigInteger g = new BigInteger(handshakeMessage.getData());
+        BigInteger score = g.pow(reconnectSecret).mod(DH_P);
+        new Thread(new SendMessagesThread("SCORE", MessageCodes.getRequest(), score.toString()))
+            .start();
+      } catch (Exception ignored) {
+      }
+      return true;
+    }
+    if (upperName.equals("SCORE")) {
+      try {
+        BigInteger serverScore = new BigInteger(handshakeMessage.getData());
+        BigInteger aesKey = serverScore.pow(reconnectSecret).mod(DH_P);
+        MySocket.setAESkey(bigIntNumToBytes(aesKey));
+      } catch (Exception ignored) {
+      }
+      reconnectingHandshake = false;
+      return true;
+    }
+    return true;
   }
 }
 

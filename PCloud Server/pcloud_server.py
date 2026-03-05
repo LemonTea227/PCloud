@@ -49,6 +49,7 @@ HANDSHAKE_DEADLINE_SECONDS = 10.0
 PREVIEW_MAX_DIMENSION = 320
 PREVIEW_JPEG_QUALITY = 60
 PREVIEW_CACHE_DIR_NAME = ".preview_cache"
+PREVIEW_MAX_ENCODED_LENGTH = 300000
 
 
 def normalize_auth_field(value):
@@ -465,6 +466,15 @@ def load_source_bytes_for_preview(album_path, file_name, file_data):
         return None
 
 
+def decode_base64_data(encoded_data):
+    if encoded_data is None:
+        return None
+    try:
+        return base64.b64decode(encoded_data)
+    except Exception:
+        return None
+
+
 def save_photo_data_in_album(album_id, file_name, file_data):
     if album_id is None or file_name is None or file_data is None:
         return
@@ -538,7 +548,7 @@ def get_preview_encoded_for_photo(sock, album_name, file_name, file_data=""):
         try:
             with open(preview_cache_path, "r") as cache_file:
                 cached = cache_file.read().strip()
-                if cached != "":
+                if cached != "" and len(cached) <= PREVIEW_MAX_ENCODED_LENGTH:
                     return cached
         except IOError:
             pass
@@ -557,15 +567,6 @@ def get_preview_encoded_for_photo(sock, album_name, file_name, file_data=""):
         except IOError:
             pass
         return preview_b64
-
-    if file_data:
-        return str(file_data)
-
-    if source_bytes:
-        raw_b64_bytes = base64.b64encode(source_bytes)
-        if not isinstance(raw_b64_bytes, str):
-            return raw_b64_bytes.decode("ascii")
-        return raw_b64_bytes
     return ""
 
 
@@ -640,20 +641,39 @@ def finalize_uploaded_photo(sock, recv, aes_key, album_name, original_file_name,
 
     file_names = get_photos_names(sock, album_name)
     file_name = naming(original_file_name, file_names)
-    photo_id = generate_id(PHOTO_KIND)
-    photo = pcloud_server_db.Photo()
-    photo.new_photo(photo_id, album_id, USERS[sock].user_id, file_name, file_data)
 
     album_path = os.path.join(PATH_TO_FILES, USERS[sock].username, album_name)
     if not os.path.isdir(album_path):
         make_album_directory(sock, album_name)
     file_path = os.path.join(album_path, file_name)
+    decoded_data = decode_base64_data(file_data)
+    if decoded_data is None:
+        SEND[sock].append(
+            build_message(
+                get_header_from_message(recv, "name"),
+                UPLOAD_PHOTO_ERROR,
+                aes_key=aes_key,
+            )
+        )
+        return
+
     try:
-        decoded_data = base64.b64decode(file_data)
         with open(file_path, "wb") as f:
             f.write(decoded_data)
-    except (IOError, ValueError) as e:
+    except IOError as e:
         print("Failed to write uploaded photo to disk: %s" % str(e))
+        SEND[sock].append(
+            build_message(
+                get_header_from_message(recv, "name"),
+                UPLOAD_PHOTO_ERROR,
+                aes_key=aes_key,
+            )
+        )
+        return
+
+    photo_id = generate_id(PHOTO_KIND)
+    photo = pcloud_server_db.Photo()
+    photo.new_photo(photo_id, album_id, USERS[sock].user_id, file_name, file_data)
 
     preview_data = get_preview_encoded_for_photo(sock, album_name, file_name, file_data)
     confirm_data = file_name
@@ -1076,21 +1096,40 @@ def receive_handler(sock, recv, aes_key=None):
             file_names = get_photos_names(sock, album_name)
             file_name = naming(upload_parts[1], file_names)
             file_data = upload_parts[2]
-            photo_id = generate_id(PHOTO_KIND)
-            photo = pcloud_server_db.Photo()
-            photo.new_photo(photo_id, album_id, USERS[sock].user_id, file_name, file_data)
 
             # Write photo to filesystem (in addition to DB)
             album_path = os.path.join(PATH_TO_FILES, USERS[sock].username, album_name)
             if not os.path.isdir(album_path):
                 make_album_directory(sock, album_name)
             file_path = os.path.join(album_path, file_name)
+            decoded_data = decode_base64_data(file_data)
+            if decoded_data is None:
+                SEND[sock].append(
+                    build_message(
+                        get_header_from_message(recv, "name"),
+                        UPLOAD_PHOTO_ERROR,
+                        aes_key=aes_key,
+                    )
+                )
+                return
+
             try:
-                decoded_data = base64.b64decode(file_data)
                 with open(file_path, "wb") as f:
                     f.write(decoded_data)
-            except (IOError, ValueError) as e:
+            except IOError as e:
                 print("Failed to write uploaded photo to disk: %s" % str(e))
+                SEND[sock].append(
+                    build_message(
+                        get_header_from_message(recv, "name"),
+                        UPLOAD_PHOTO_ERROR,
+                        aes_key=aes_key,
+                    )
+                )
+                return
+
+            photo_id = generate_id(PHOTO_KIND)
+            photo = pcloud_server_db.Photo()
+            photo.new_photo(photo_id, album_id, USERS[sock].user_id, file_name, file_data)
 
             try:
                 SEND[sock].append(
@@ -1207,6 +1246,9 @@ def receive_handler(sock, recv, aes_key=None):
                     return
                 photo_album = photo_parts[0]
                 file_name = photo_parts[1]
+                want_preview = False
+                if len(photo_parts) >= 3 and str(photo_parts[2]).strip().upper() == "PREVIEW":
+                    want_preview = True
                 album_id = USERS[sock].get_album_id_by_album_name(photo_album)
                 if album_id is None:
                     SEND[sock].append(
@@ -1217,7 +1259,16 @@ def receive_handler(sock, recv, aes_key=None):
                         )
                     )
                     return
-                photo_to_send = get_encoded_photo(sock, photo_album, file_name)
+                if want_preview:
+                    preview_source = USERS[sock].get_photo_data_in_album(photo_album, file_name)
+                    photo_to_send = get_preview_encoded_for_photo(
+                        sock,
+                        photo_album,
+                        file_name,
+                        "" if preview_source is None else str(preview_source),
+                    )
+                else:
+                    photo_to_send = get_encoded_photo(sock, photo_album, file_name)
                 photo_chunks = split_string_chunks(photo_to_send, 7000)
                 total_parts = len(photo_chunks)
 

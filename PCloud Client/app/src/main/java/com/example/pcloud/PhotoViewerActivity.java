@@ -2,13 +2,17 @@ package com.example.pcloud;
 
 import android.app.Activity;
 import android.content.ClipData;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.view.GestureDetector;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -22,6 +26,7 @@ import com.google.android.material.snackbar.Snackbar;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Objects;
@@ -38,6 +43,7 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
   private boolean photoRequestInFlight = false;
   private boolean pendingShareAfterFetch = false;
   private boolean pendingDownloadAfterFetch = false;
+  private boolean currentRequestWantsFull = false;
 
   //    ImageView photoViewerImageView;
 
@@ -91,31 +97,41 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
         if (preview != null && preview.length > 0) {
           Bitmap previewBitmap = BitmapFactory.decodeByteArray(preview, 0, preview.length);
           if (previewBitmap != null) {
+            currentPhotoBitmap = previewBitmap;
             photoViewerPhotoView.setImageBitmap(previewBitmap);
           }
         }
       }
 
-      requestFullPhoto();
+      requestPreviewPhoto();
     }
   }
 
+  private void requestPreviewPhoto() {
+    requestPhoto(false);
+  }
+
   private void requestFullPhoto() {
+    requestPhoto(true);
+  }
+
+  private void requestPhoto(boolean wantFullPhoto) {
     if (photoRequestInFlight) {
       return;
     }
     if (getIntent().hasExtra("album_name") && getIntent().hasExtra("photo_name")) {
       photoRequestInFlight = true;
+      currentRequestWantsFull = wantFullPhoto;
       expectedPhotoChunks = 0;
       incomingPhotoChunksByPart.clear();
-      new Thread(
-              new SendMessagesThread(
-                  "PHOTO",
-                  MessageCodes.getRequest(),
-                  getIntent().getExtras().getString("album_name")
-                      + "\n"
-                      + getIntent().getExtras().getString("photo_name")))
-          .start();
+      String payload =
+          getIntent().getExtras().getString("album_name")
+              + "\n"
+              + getIntent().getExtras().getString("photo_name");
+      if (!wantFullPhoto) {
+        payload += "\nPREVIEW";
+      }
+      new Thread(new SendMessagesThread("PHOTO", MessageCodes.getRequest(), payload)).start();
     }
   }
 
@@ -187,9 +203,7 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
       requestFullPhoto();
       return;
     }
-    Toast.makeText(
-            getApplicationContext(), getString(R.string.download_complete), Toast.LENGTH_SHORT)
-        .show();
+    saveCurrentPhotoToGallery();
   }
 
   private android.net.Uri saveBitmapForShare(Bitmap bitmap, String photoName) {
@@ -264,13 +278,70 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
     }
     if (pendingDownloadAfterFetch) {
       pendingDownloadAfterFetch = false;
-      Toast.makeText(
-              getApplicationContext(), getString(R.string.download_complete), Toast.LENGTH_SHORT)
-          .show();
+      saveCurrentPhotoToGallery();
     }
     if (pendingShareAfterFetch) {
       pendingShareAfterFetch = false;
       shareBitmap(currentPhotoBitmap);
+    }
+  }
+
+  private String getPhotoDisplayName() {
+    String photoName =
+        getIntent().hasExtra("photo_name")
+            ? getIntent().getExtras().getString("photo_name")
+            : "photo_" + System.currentTimeMillis();
+    if (!photoName.contains(".")) {
+      photoName += ".jpg";
+    }
+    return photoName;
+  }
+
+  private void saveCurrentPhotoToGallery() {
+    if (currentPhotoBitmap == null) {
+      return;
+    }
+    boolean saved = saveBitmapToGallery(currentPhotoBitmap, getPhotoDisplayName());
+    if (saved) {
+      Toast.makeText(
+              getApplicationContext(), getString(R.string.download_complete), Toast.LENGTH_SHORT)
+          .show();
+    } else {
+      Toast.makeText(getApplicationContext(), getString(R.string.share_error), Toast.LENGTH_SHORT)
+          .show();
+    }
+  }
+
+  private boolean saveBitmapToGallery(Bitmap bitmap, String fileName) {
+    OutputStream outputStream = null;
+    try {
+      ContentValues values = new ContentValues();
+      values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
+      values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        values.put(
+            MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/PCloud");
+      }
+      Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+      if (uri == null) {
+        return false;
+      }
+      outputStream = getContentResolver().openOutputStream(uri);
+      if (outputStream == null) {
+        return false;
+      }
+      boolean compressed = bitmap.compress(Bitmap.CompressFormat.JPEG, 95, outputStream);
+      outputStream.flush();
+      return compressed;
+    } catch (IOException e) {
+      return false;
+    } finally {
+      if (outputStream != null) {
+        try {
+          outputStream.close();
+        } catch (IOException ignored) {
+        }
+      }
     }
   }
 
@@ -295,7 +366,7 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
                       return;
                     }
                     currentPhotoBitmap = finalDecoded;
-                    hasFullPhoto = true;
+                    hasFullPhoto = currentRequestWantsFull;
                     photoRequestInFlight = false;
                     photoViewerPhotoView.setImageBitmap(finalDecoded);
                     completePendingPhotoActionsIfReady();
@@ -314,6 +385,7 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
     if (getIntent().hasExtra("album_name")) {
       goSecond.putExtra("album_name", getIntent().getExtras().getString("album_name"));
     }
+    goSecond.putExtra("restore_cached_previews", true);
 
     goSecond.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     startActivity(goSecond);

@@ -116,14 +116,21 @@ public class SecondActivity extends AppCompatActivity
 
     String albumName = getAlbumName();
     if (!albumName.equals("")) {
-      SessionDataCache.clearAlbumPreviewCache(albumName);
-      previewBitmapsByName.clear();
-      photos.clear();
-      adapter.notifyDataSetChanged();
+      boolean restoreCachedPreviews = getIntent().getBooleanExtra("restore_cached_previews", false);
+      if (restoreCachedPreviews) {
+        restoreCachedPhotos(albumName);
+      } else {
+        SessionDataCache.clearAlbumPreviewCache(albumName);
+        previewBitmapsByName.clear();
+        photos.clear();
+        adapter.notifyDataSetChanged();
+      }
       showLoadingIndicator();
       new Thread(
               new SendMessagesThread(
-                  "PHOTOS", MessageCodes.getRequest(), buildPhotosDeltaRequestPayload(albumName)))
+                  "PHOTOS",
+                  MessageCodes.getRequest(),
+                  buildPhotosDeltaRequestPayload(albumName, restoreCachedPreviews)))
           .start();
     }
   }
@@ -237,8 +244,22 @@ public class SecondActivity extends AppCompatActivity
     }
   }
 
-  private String buildPhotosDeltaRequestPayload(String albumName) {
-    return albumName;
+  private String buildPhotosDeltaRequestPayload(String albumName, boolean allowDelta) {
+    if (!allowDelta) {
+      return albumName;
+    }
+    List<String> knownPhotoNames = SessionDataCache.getAlbumPhotoNames(albumName);
+    if (knownPhotoNames.isEmpty()) {
+      return albumName;
+    }
+    StringBuilder payload = new StringBuilder(albumName).append("\nDELTA");
+    for (String knownPhotoName : knownPhotoNames) {
+      if (knownPhotoName == null || knownPhotoName.trim().equals("")) {
+        continue;
+      }
+      payload.append("\n").append(knownPhotoName);
+    }
+    return payload.toString();
   }
 
   private void appendPhotoToRows(String photoName, Bitmap decodedPhoto) {
