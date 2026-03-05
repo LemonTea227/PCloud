@@ -11,6 +11,7 @@ log.txt
 **/.mypy_cache/
 **/.ruff_cache/
 **/.cache/
+**/.preview_cache/
 
 # Local runtime data
 PCloud Server/PCloudServerDB.db
