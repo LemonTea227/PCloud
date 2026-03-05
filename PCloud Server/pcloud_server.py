@@ -877,7 +877,8 @@ def receive_handler(sock, recv, aes_key=None):
             try:
                 album_names = message_data.split("\n")
                 for name in album_names:
-                    if str(name).strip() == "":
+                    name = str(name).strip()
+                    if name == "":
                         continue
 
                     photo_rows = USERS[sock].get_photos_in_album(name)

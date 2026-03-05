@@ -349,23 +349,7 @@ public class MainActivity extends AppCompatActivity
     removeAlbumsByName(toDelete);
     clearSelectionMode();
 
-    pendingDeleteRunnable =
-        () -> {
-          if (pendingDeleteAlbumNames.isEmpty()) {
-            return;
-          }
-          StringBuilder payload = new StringBuilder();
-          for (int i = 0; i < pendingDeleteAlbumNames.size(); i++) {
-            if (i > 0) {
-              payload.append("\n");
-            }
-            payload.append(pendingDeleteAlbumNames.get(i));
-          }
-          new Thread(
-                  new SendMessagesThread(
-                      "DEL_ALBUMS", MessageCodes.getRequest(), payload.toString()))
-              .start();
-        };
+    pendingDeleteRunnable = this::sendPendingAlbumDeleteToServer;
 
     deleteHandler.postDelayed(pendingDeleteRunnable, 5000);
 
@@ -381,6 +365,25 @@ public class MainActivity extends AppCompatActivity
               restorePendingDeletedAlbums();
             })
         .show();
+  }
+
+  private void sendPendingAlbumDeleteToServer() {
+    if (pendingDeleteRunnable != null) {
+      deleteHandler.removeCallbacks(pendingDeleteRunnable);
+      pendingDeleteRunnable = null;
+    }
+    if (pendingDeleteAlbumNames.isEmpty()) {
+      return;
+    }
+    StringBuilder payload = new StringBuilder();
+    for (int i = 0; i < pendingDeleteAlbumNames.size(); i++) {
+      if (i > 0) {
+        payload.append("\n");
+      }
+      payload.append(pendingDeleteAlbumNames.get(i));
+    }
+    new Thread(new SendMessagesThread("DEL_ALBUMS", MessageCodes.getRequest(), payload.toString()))
+        .start();
   }
 
   private void removeAlbumsByName(ArrayList<String> names) {
@@ -414,6 +417,16 @@ public class MainActivity extends AppCompatActivity
       return;
     }
     super.onBackPressed();
+  }
+
+  @Override
+  protected void onStop() {
+    super.onStop();
+    if (pendingDeleteRunnable != null && !pendingDeleteAlbumNames.isEmpty()) {
+      deleteHandler.removeCallbacks(pendingDeleteRunnable);
+      sendPendingAlbumDeleteToServer();
+      pendingDeleteRunnable = null;
+    }
   }
 
   @Override

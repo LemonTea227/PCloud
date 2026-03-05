@@ -54,7 +54,9 @@ def cleanup_database():
 
     if album_ids:
         placeholders = ",".join(["?"] * len(album_ids))
-        cursor.execute("DELETE FROM photos WHERE album_id IN (" + placeholders + ")", tuple(album_ids))
+        cursor.execute(
+            "DELETE FROM photos WHERE album_id IN (" + placeholders + ")", tuple(album_ids)
+        )
         photos_deleted += cursor.rowcount if cursor.rowcount is not None else 0
 
     if user_ids:

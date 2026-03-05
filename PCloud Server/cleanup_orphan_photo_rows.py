@@ -117,7 +117,10 @@ def main():
     deleted = 0
     if orphan_ids:
         placeholders = ",".join(["?"] * len(orphan_ids))
-        cursor.execute("DELETE FROM photos WHERE id IN (" + placeholders + ")", tuple([str(x) for x in orphan_ids]))
+        cursor.execute(
+            "DELETE FROM photos WHERE id IN (" + placeholders + ")",
+            tuple([str(x) for x in orphan_ids]),
+        )
         deleted = cursor.rowcount if cursor.rowcount is not None else 0
         conn.commit()
 
