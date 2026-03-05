@@ -44,6 +44,10 @@ class ReceiveMessagesThread implements Runnable {
         "Receiver loop started for " + activity.getClass().getSimpleName());
     try {
       while (!MySocket.isClosed()) {
+        if (MySocket.isInactivityTimedOut()) {
+          handleInactivityTimeout();
+          break;
+        }
         try {
           BufferedReader input = MySocket.getInput();
           if (input == null) {
@@ -115,6 +119,7 @@ class ReceiveMessagesThread implements Runnable {
               if (!message.equals("")) {
                 ClientLogger.log(
                     "ReceiveMessagesThread", "Received message bytes=" + message.length());
+                MySocket.markActivity();
 
                 if (reconnectingHandshake && handleReconnectHandshakeMessage(message)) {
                   break;
@@ -221,6 +226,18 @@ class ReceiveMessagesThread implements Runnable {
     }
     return true;
   }
+
+  private void handleInactivityTimeout() {
+    ClientLogger.log(
+        "ReceiveMessagesThread",
+        "Disconnecting due to inactivity timeout (" + MySocket.INACTIVITY_TIMEOUT_MS + " ms)");
+    MySocket.disconnect();
+    if (activity != null) {
+      Intent goSplash = new Intent(activity.getApplicationContext(), SplashActivity.class);
+      goSplash.putExtra("LostConnection", true);
+      activity.startActivity(goSplash);
+    }
+  }
 }
 
 interface ReceiveMessagesListener {
@@ -259,6 +276,7 @@ class SendMessagesThread implements Runnable {
           synchronized (sendLock) {
             MySocket.getOutput().write(outbound);
             MySocket.getOutput().flush();
+            MySocket.markActivity();
           }
         });
   }

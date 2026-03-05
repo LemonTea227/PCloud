@@ -122,6 +122,10 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
     if (getIntent().hasExtra("album_name") && getIntent().hasExtra("photo_name")) {
       photoRequestInFlight = true;
       currentRequestWantsFull = wantFullPhoto;
+      if (wantFullPhoto) {
+        MySocket.beginTransfer();
+        TransferNotificationHelper.showDownloadProgress(getApplicationContext(), 0, 0);
+      }
       expectedPhotoChunks = 0;
       incomingPhotoChunksByPart.clear();
       String payload =
@@ -360,6 +364,10 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
               runOnUiThread(
                   () -> {
                     if (finalDecoded == null) {
+                      if (currentRequestWantsFull) {
+                        MySocket.endTransfer();
+                        TransferNotificationHelper.failDownload(getApplicationContext());
+                      }
                       photoRequestInFlight = false;
                       pendingShareAfterFetch = false;
                       pendingDownloadAfterFetch = false;
@@ -367,6 +375,10 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
                     }
                     currentPhotoBitmap = finalDecoded;
                     hasFullPhoto = currentRequestWantsFull;
+                    if (currentRequestWantsFull) {
+                      MySocket.endTransfer();
+                      TransferNotificationHelper.completeDownload(getApplicationContext());
+                    }
                     photoRequestInFlight = false;
                     photoViewerPhotoView.setImageBitmap(finalDecoded);
                     completePendingPhotoActionsIfReady();
@@ -399,6 +411,10 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
       if (message.getType().equals(MessageCodes.getConfirm())) {
         decodeAndApplyFullPhotoAsync(message.getData());
       } else if (message.getType().equals(MessageCodes.getPhotoError())) {
+        if (currentRequestWantsFull) {
+          MySocket.endTransfer();
+          TransferNotificationHelper.failDownload(getApplicationContext());
+        }
         photoRequestInFlight = false;
         pendingShareAfterFetch = false;
         pendingDownloadAfterFetch = false;
@@ -419,6 +435,10 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
           } catch (NumberFormatException ignored) {
             expectedPhotoChunks = 0;
           }
+          if (currentRequestWantsFull) {
+            TransferNotificationHelper.showDownloadProgress(
+                getApplicationContext(), 0, expectedPhotoChunks);
+          }
           incomingPhotoChunksByPart.clear();
         }
       }
@@ -431,6 +451,10 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
           try {
             int chunkIndex = Integer.parseInt(lines[2]);
             incomingPhotoChunksByPart.put(chunkIndex, lines[4]);
+            if (currentRequestWantsFull && expectedPhotoChunks > 0) {
+              TransferNotificationHelper.showDownloadProgress(
+                  getApplicationContext(), incomingPhotoChunksByPart.size(), expectedPhotoChunks);
+            }
           } catch (NumberFormatException ignored) {
           }
         }
@@ -444,6 +468,10 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
           for (int index = 0; index < expectedPhotoChunks; index++) {
             String chunk = incomingPhotoChunksByPart.get(index);
             if (chunk == null) {
+              if (currentRequestWantsFull) {
+                MySocket.endTransfer();
+                TransferNotificationHelper.failDownload(getApplicationContext());
+              }
               photoRequestInFlight = false;
               pendingShareAfterFetch = false;
               pendingDownloadAfterFetch = false;
@@ -457,6 +485,10 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
           expectedPhotoChunks = 0;
           decodeAndApplyFullPhotoAsync(assembled.toString());
         } else {
+          if (currentRequestWantsFull) {
+            MySocket.endTransfer();
+            TransferNotificationHelper.completeDownload(getApplicationContext());
+          }
           photoRequestInFlight = false;
           if (pendingDownloadAfterFetch) {
             pendingDownloadAfterFetch = false;

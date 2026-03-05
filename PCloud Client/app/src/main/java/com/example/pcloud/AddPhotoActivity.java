@@ -68,6 +68,8 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
               return;
             }
             String encodedImage = Base64.encodeToString(rawImageBytes, Base64.NO_WRAP);
+            MySocket.beginTransfer();
+            TransferNotificationHelper.showUploadProgress(getApplicationContext(), 0, 0);
             if (getIntent().hasExtra("photos")) {
               String albumName = getIntent().getExtras().getString("photos").split("\n")[0];
               sendUploadInChunks(albumName, nameOfFile, encodedImage);
@@ -147,21 +149,16 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
 
   @Override
   public void messageReceived(String mes, Activity activity) {
-    //        HandelMessage message = new HandelMessage(mes);
-    //        if (message.getName().equals("PHOTOS")) {
-    //            if (message.getType().equals(MessageCodes.getConfirm())) {
-    //                Intent goSecond = new Intent(getApplicationContext(), SecondActivity.class);
-    //                goSecond.putExtra("photos", message.getData());
-    //                if (getIntent().hasExtra("albums")) {
-    //                    goSecond.putExtra("albums", getIntent().getExtras().getString("albums"));
-    //                }
-    //                MySocket.setClosed(true);
-    //                startActivity(goSecond);
-    //            } else if (message.getType().equals(MessageCodes.getAlbumsError())) {
-    //                Toast.makeText(getApplicationContext(),
-    // getResources().getString(R.string.photos_error), Toast.LENGTH_SHORT).show();
-    //            }
-    //        }
+    HandelMessage message = new HandelMessage(mes);
+    if (message.getName().equals("UPLOAD_PHOTO")) {
+      if (message.getType().equals(MessageCodes.getConfirm())) {
+        MySocket.endTransfer();
+        TransferNotificationHelper.completeUpload(getApplicationContext());
+      } else if (message.getType().equals(MessageCodes.getUploadPhotoError())) {
+        MySocket.endTransfer();
+        TransferNotificationHelper.failUpload(getApplicationContext());
+      }
+    }
   }
 
   public String getFileName(android.net.Uri uri) {
@@ -225,12 +222,15 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
               int chunkSize = 7000;
               int totalParts = (encodedImage.length() + chunkSize - 1) / chunkSize;
               if (totalParts <= 0) {
+                MySocket.endTransfer();
+                TransferNotificationHelper.failUpload(getApplicationContext());
                 return;
               }
 
               String startPayload = albumName + "\n" + fileName + "\n" + totalParts;
               SendMessagesThread.queueMessage(
                   "UPLOAD_PHOTO_START", MessageCodes.getRequest(), startPayload);
+              TransferNotificationHelper.showUploadProgress(getApplicationContext(), 0, totalParts);
 
               for (int partIndex = 0; partIndex < totalParts; partIndex++) {
                 int start = partIndex * chunkSize;
@@ -248,6 +248,8 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
                         + chunk;
                 SendMessagesThread.queueMessage(
                     "UPLOAD_PHOTO_CHUNK", MessageCodes.getRequest(), chunkPayload);
+                TransferNotificationHelper.showUploadProgress(
+                  getApplicationContext(), partIndex + 1, totalParts);
               }
             })
         .start();

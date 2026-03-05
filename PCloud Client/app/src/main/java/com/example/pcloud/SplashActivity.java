@@ -1,9 +1,12 @@
 package com.example.pcloud;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.os.Bundle;
 import android.widget.Toast;
+import androidx.core.app.ActivityCompat;
 import androidx.appcompat.app.AppCompatActivity;
 import java.math.BigInteger;
 import java.util.Locale;
@@ -11,6 +14,7 @@ import java.util.Objects;
 import java.util.Random;
 
 public class SplashActivity extends AppCompatActivity implements ReceiveMessagesListener {
+  private static final int REQUEST_NOTIFICATIONS_PERMISSION = 8101;
   int myNum; // my num for diffie hellman protocol
   BigInteger P =
       new BigInteger(
@@ -28,6 +32,7 @@ public class SplashActivity extends AppCompatActivity implements ReceiveMessages
     ClientLogger.installCrashHandler(getApplicationContext());
     ClientLogger.log("SplashActivity", "Splash started and crash logger initialized");
     SessionDataCache.clearAll();
+    requestNotificationsPermissionIfNeeded();
 
     if (getIntent().hasExtra("LostConnection")) {
       if (Objects.requireNonNull(getIntent().getExtras()).getBoolean("LostConnection")) {
@@ -56,6 +61,20 @@ public class SplashActivity extends AppCompatActivity implements ReceiveMessages
               }
             })
         .start();
+  }
+
+  private void requestNotificationsPermissionIfNeeded() {
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
+      return;
+    }
+    if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+        == PackageManager.PERMISSION_GRANTED) {
+      return;
+    }
+    ActivityCompat.requestPermissions(
+        this,
+        new String[] {Manifest.permission.POST_NOTIFICATIONS},
+        REQUEST_NOTIFICATIONS_PERMISSION);
   }
 
   /**

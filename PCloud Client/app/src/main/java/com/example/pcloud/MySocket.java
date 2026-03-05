@@ -23,6 +23,7 @@ class ConnectionThread implements Runnable {
         MySocket.setSocket(socket);
         MySocket.setOutput(new PrintWriter(socket.getOutputStream()));
         MySocket.setInput(new BufferedReader(new InputStreamReader(socket.getInputStream())));
+        MySocket.markActivity();
         ClientLogger.log(
             "ConnectionThread", "Connected to server at " + primaryIp + ":" + MySocket.getPort());
         break;
@@ -36,6 +37,7 @@ class ConnectionThread implements Runnable {
           MySocket.setSocket(socket);
           MySocket.setOutput(new PrintWriter(socket.getOutputStream()));
           MySocket.setInput(new BufferedReader(new InputStreamReader(socket.getInputStream())));
+          MySocket.markActivity();
           ClientLogger.log("ConnectionThread", "Connected via internal IP " + fallbackIp);
           break;
         } catch (IOException err) {
@@ -70,6 +72,12 @@ public class MySocket {
 
   private static byte[] AESkey = {};
 
+  private static long lastActivityAtMs = System.currentTimeMillis();
+
+  private static int activeTransfers = 0;
+
+  public static final long INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000L;
+
   public static BigInteger getG() {
     return G;
   }
@@ -100,6 +108,53 @@ public class MySocket {
 
   public static synchronized void setClosed(boolean closed) {
     MySocket.closed = closed;
+  }
+
+  public static synchronized void markActivity() {
+    lastActivityAtMs = System.currentTimeMillis();
+  }
+
+  public static synchronized long getLastActivityAtMs() {
+    return lastActivityAtMs;
+  }
+
+  public static synchronized void beginTransfer() {
+    activeTransfers += 1;
+    markActivity();
+  }
+
+  public static synchronized void endTransfer() {
+    if (activeTransfers > 0) {
+      activeTransfers -= 1;
+    }
+    markActivity();
+  }
+
+  public static synchronized boolean hasActiveTransfer() {
+    return activeTransfers > 0;
+  }
+
+  public static synchronized boolean isInactivityTimedOut() {
+    if (hasActiveTransfer()) {
+      return false;
+    }
+    long idleMs = System.currentTimeMillis() - lastActivityAtMs;
+    return idleMs >= INACTIVITY_TIMEOUT_MS;
+  }
+
+  public static synchronized void disconnect() {
+    try {
+      if (socket != null) {
+        socket.close();
+      }
+    } catch (IOException ignored) {
+    }
+    socket = null;
+    input = null;
+    output = null;
+    extraMessage = "";
+    closed = true;
+    activeTransfers = 0;
   }
 
   public static synchronized PrintWriter getOutput() {

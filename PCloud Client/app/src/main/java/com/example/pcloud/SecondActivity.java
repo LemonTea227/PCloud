@@ -353,12 +353,15 @@ public class SecondActivity extends AppCompatActivity
               int chunkSize = 7000;
               int totalParts = (encodedImage.length() + chunkSize - 1) / chunkSize;
               if (totalParts <= 0) {
+                MySocket.endTransfer();
+                TransferNotificationHelper.failUpload(getApplicationContext());
                 return;
               }
 
               String startPayload = albumName + "\n" + fileName + "\n" + totalParts;
               SendMessagesThread.queueMessage(
                   "UPLOAD_PHOTO_START", MessageCodes.getRequest(), startPayload);
+              TransferNotificationHelper.showUploadProgress(getApplicationContext(), 0, totalParts);
 
               for (int partIndex = 0; partIndex < totalParts; partIndex++) {
                 int start = partIndex * chunkSize;
@@ -376,6 +379,8 @@ public class SecondActivity extends AppCompatActivity
                         + chunk;
                 SendMessagesThread.queueMessage(
                     "UPLOAD_PHOTO_CHUNK", MessageCodes.getRequest(), chunkPayload);
+                TransferNotificationHelper.showUploadProgress(
+                  getApplicationContext(), partIndex + 1, totalParts);
               }
             })
         .start();
@@ -905,6 +910,8 @@ public class SecondActivity extends AppCompatActivity
           android.util.Base64.encodeToString(rawImageBytes, android.util.Base64.NO_WRAP);
 
       if (getIntent().hasExtra("album_name")) {
+        MySocket.beginTransfer();
+        TransferNotificationHelper.showUploadProgress(getApplicationContext(), 0, 0);
         acquireTransferWakeLock();
         sendUploadInChunks(
             getIntent().getExtras().getString("album_name"), nameOfFile, encodedImage);
@@ -1086,9 +1093,13 @@ public class SecondActivity extends AppCompatActivity
 
     if (message.getName().equals("UPLOAD_PHOTO")) {
       if (message.getType().equals(MessageCodes.getConfirm())) {
+        MySocket.endTransfer();
+        TransferNotificationHelper.completeUpload(getApplicationContext());
         releaseTransferWakeLock();
         addPhoto(message.getData());
       } else if (message.getType().equals(MessageCodes.getUploadPhotoError())) {
+        MySocket.endTransfer();
+        TransferNotificationHelper.failUpload(getApplicationContext());
         releaseTransferWakeLock();
         Toast.makeText(
                 getApplicationContext(),
