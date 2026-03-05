@@ -64,4 +64,5 @@
     <string name="download_original">Download original</string>
     <string name="downloading_photo">Downloading original image…</string>
     <string name="download_complete">Original image loaded</string>
+    <string name="refreshing_from_server">Refreshing photos from server…</string>
 </resources>

@@ -61,6 +61,7 @@ public class SecondActivity extends AppCompatActivity
   private final Handler deleteHandler = new Handler(Looper.getMainLooper());
   private Runnable pendingDeleteRunnable;
   private String pendingDeletePayload;
+  private Snackbar loadingSnackbar;
 
   private boolean first;
 
@@ -119,10 +120,33 @@ public class SecondActivity extends AppCompatActivity
       previewBitmapsByName.clear();
       photos.clear();
       adapter.notifyDataSetChanged();
+      showLoadingIndicator();
       new Thread(
               new SendMessagesThread(
                   "PHOTOS", MessageCodes.getRequest(), buildPhotosDeltaRequestPayload(albumName)))
           .start();
+    }
+  }
+
+  private void showLoadingIndicator() {
+    if (photosSecondRecyclerView == null) {
+      return;
+    }
+    if (loadingSnackbar != null) {
+      loadingSnackbar.dismiss();
+    }
+    loadingSnackbar =
+        Snackbar.make(
+            photosSecondRecyclerView,
+            getString(R.string.refreshing_from_server),
+            Snackbar.LENGTH_INDEFINITE);
+    loadingSnackbar.show();
+  }
+
+  private void dismissLoadingIndicator() {
+    if (loadingSnackbar != null) {
+      loadingSnackbar.dismiss();
+      loadingSnackbar = null;
     }
   }
 
@@ -911,6 +935,7 @@ public class SecondActivity extends AppCompatActivity
       if (message.getType().equals(MessageCodes.getConfirm())) {
         generatePhotos(message.getData());
       } else if (message.getType().equals(MessageCodes.getPhotosError())) {
+        dismissLoadingIndicator();
         Toast.makeText(
                 getApplicationContext(),
                 getResources().getString(R.string.photos_error),
@@ -998,6 +1023,7 @@ public class SecondActivity extends AppCompatActivity
 
     if (message.getName().equals("PHOTOS_DONE")) {
       if (message.getType().equals(MessageCodes.getConfirm())) {
+        dismissLoadingIndicator();
         for (Integer pendingIndex : new ArrayList<>(incomingPreviewChunksByIndex.keySet())) {
           clearPlaceholderAtIndex(previewPlaceholderOffset + pendingIndex);
         }

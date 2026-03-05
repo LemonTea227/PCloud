@@ -63,4 +63,5 @@
     <string name="download_original">הורד מקור</string>
     <string name="downloading_photo">מוריד תמונה מקורית…</string>
     <string name="download_complete">התמונה המקורית נטענה</string>
+    <string name="refreshing_from_server">מרענן תמונות מהשרת…</string>
 </resources>
