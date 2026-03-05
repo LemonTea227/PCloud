@@ -33,6 +33,7 @@ PENDING_UPLOADS = {}
 # message codes
 REQUEST = "0"
 CONFIRM = "1"
+ACCESS_DENIED = "3"
 LOGIN_ERROR = "200"
 REGISTER_ERROR = "201"
 ALBUMS_ERROR = "202"
@@ -43,6 +44,7 @@ UPLOAD_PHOTO_ERROR = "206"
 PHOTO_ERROR = "207"
 DEL_PHOTOS_ERROR = "208"
 RECV_DEADLINE_SECONDS = 120.0
+RECV_POLL_SECONDS = 1.0
 HANDSHAKE_DEADLINE_SECONDS = 10.0
 PREVIEW_MAX_DIMENSION = 320
 PREVIEW_JPEG_QUALITY = 60
@@ -746,11 +748,16 @@ def async_send_receive(sock):
                 data = recv_by_protocol(
                     sock,
                     aes_key=aes_key,
-                    deadline_seconds=RECV_DEADLINE_SECONDS,
+                    deadline_seconds=RECV_POLL_SECONDS,
                 )
                 if not data:
                     raise socket.error
-                receive_handler(sock, data, aes_key=aes_key)
+                request_worker = threading.Thread(
+                    target=receive_handler_safe,
+                    args=(sock, data, aes_key),
+                )
+                request_worker.daemon = True
+                request_worker.start()
 
             except socket.timeout:
                 continue
@@ -776,6 +783,37 @@ def async_send_receive(sock):
             except Exception:
                 pass
             break
+
+
+def receive_handler_safe(sock, recv, aes_key=None):
+    request_name = ""
+    is_request = False
+    had_response_before = 0
+
+    if sock in SEND:
+        had_response_before = len(SEND[sock])
+
+    try:
+        msg_type = get_header_from_message(recv, "type")
+        request_name = get_header_from_message(recv, "name")
+        is_request = msg_type == REQUEST
+    except Exception:
+        request_name = ""
+        is_request = False
+
+    try:
+        receive_handler(sock, recv, aes_key=aes_key)
+    except socket.error:
+        if is_request and request_name != "" and sock in SEND:
+            SEND[sock].append(build_message(request_name, ACCESS_DENIED, aes_key=aes_key))
+    except Exception as e:
+        print("request handler failed: %s" % str(e))
+        if is_request and request_name != "" and sock in SEND:
+            SEND[sock].append(build_message(request_name, ACCESS_DENIED, aes_key=aes_key))
+
+    if is_request and request_name != "" and sock in SEND:
+        if len(SEND[sock]) == had_response_before:
+            SEND[sock].append(build_message(request_name, ACCESS_DENIED, aes_key=aes_key))
 
 
 def receive_handler(sock, recv, aes_key=None):
@@ -1152,6 +1190,15 @@ def receive_handler(sock, recv, aes_key=None):
                     upload_state["file_name"],
                     full_data,
                 )
+            else:
+                SEND[sock].append(
+                    build_message(
+                        "UPLOAD_PHOTO_CHUNK",
+                        CONFIRM,
+                        album_name + "\n" + original_file_name + "\n" + str(part_index),
+                        aes_key=aes_key,
+                    )
+                )
         elif message_name == "PHOTO":
             try:
                 photo_parts = message_data.split("\n")
@@ -1247,6 +1294,10 @@ def receive_handler(sock, recv, aes_key=None):
                         get_header_from_message(recv, "name"), DEL_PHOTOS_ERROR, aes_key=aes_key
                     )
                 )
+        else:
+            SEND[sock].append(
+                build_message(get_header_from_message(recv, "name"), ACCESS_DENIED, aes_key=aes_key)
+            )
 
 
 if __name__ == "__main__":

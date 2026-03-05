@@ -5,6 +5,8 @@ import android.content.Intent;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 class ReceiveMessagesThread implements Runnable {
@@ -163,6 +165,8 @@ interface ReceiveMessagesListener {
 }
 
 class SendMessagesThread implements Runnable {
+  private static final ExecutorService sendExecutor = Executors.newSingleThreadExecutor();
+  private static final Object sendLock = new Object();
   private String message;
 
   public SendMessagesThread(String name, String type, String data) {
@@ -175,12 +179,19 @@ class SendMessagesThread implements Runnable {
 
   @Override
   public void run() {
-    ClientLogger.log("SendMessagesThread", "Sending message bytes=" + message.length());
-    if (MySocket.getOutput() == null) {
-      ClientLogger.logError("SendMessagesThread", "Output stream is null; dropping message", null);
-      return;
-    }
-    MySocket.getOutput().write(message);
-    MySocket.getOutput().flush();
+    final String outbound = message;
+    sendExecutor.execute(
+        () -> {
+          ClientLogger.log("SendMessagesThread", "Sending message bytes=" + outbound.length());
+          if (MySocket.getOutput() == null) {
+            ClientLogger.logError(
+                "SendMessagesThread", "Output stream is null; dropping message", null);
+            return;
+          }
+          synchronized (sendLock) {
+            MySocket.getOutput().write(outbound);
+            MySocket.getOutput().flush();
+          }
+        });
   }
 }

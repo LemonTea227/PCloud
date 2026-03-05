@@ -274,6 +274,36 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
     }
   }
 
+  @RequiresApi(api = Build.VERSION_CODES.O)
+  private void decodeAndApplyFullPhotoAsync(final String encodedPhoto) {
+    new Thread(
+            () -> {
+              Bitmap decoded = null;
+              try {
+                byte[] decodedString = Base64.getDecoder().decode(encodedPhoto);
+                decoded = BitmapFactory.decodeByteArray(decodedString, 0, decodedString.length);
+              } catch (IllegalArgumentException ignored) {
+              }
+
+              final Bitmap finalDecoded = decoded;
+              runOnUiThread(
+                  () -> {
+                    if (finalDecoded == null) {
+                      photoRequestInFlight = false;
+                      pendingShareAfterFetch = false;
+                      pendingDownloadAfterFetch = false;
+                      return;
+                    }
+                    currentPhotoBitmap = finalDecoded;
+                    hasFullPhoto = true;
+                    photoRequestInFlight = false;
+                    photoViewerPhotoView.setImageBitmap(finalDecoded);
+                    completePendingPhotoActionsIfReady();
+                  });
+            })
+        .start();
+  }
+
   @Override
   public void onBackPressed() {
     Intent goSecond = new Intent(getApplicationContext(), SecondActivity.class);
@@ -295,19 +325,7 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
     HandelMessage message = new HandelMessage(mes);
     if (message.getName().equals("PHOTO")) {
       if (message.getType().equals(MessageCodes.getConfirm())) {
-        try {
-          byte[] decodedString = Base64.getDecoder().decode(message.getData());
-          Bitmap decoded = BitmapFactory.decodeByteArray(decodedString, 0, decodedString.length);
-          if (decoded != null) {
-            currentPhotoBitmap = decoded;
-            hasFullPhoto = true;
-            photoRequestInFlight = false;
-            photoViewerPhotoView.setImageBitmap(decoded);
-            completePendingPhotoActionsIfReady();
-          }
-        } catch (IllegalArgumentException ignored) {
-          photoRequestInFlight = false;
-        }
+        decodeAndApplyFullPhotoAsync(message.getData());
       } else if (message.getType().equals(MessageCodes.getPhotoError())) {
         photoRequestInFlight = false;
         pendingShareAfterFetch = false;
@@ -348,8 +366,8 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
     }
 
     if (message.getName().equals("PHOTO_DONE")) {
-      if (message.getType().equals(MessageCodes.getConfirm()) && expectedPhotoChunks > 0) {
-        try {
+      if (message.getType().equals(MessageCodes.getConfirm())) {
+        if (expectedPhotoChunks > 0) {
           StringBuilder assembled = new StringBuilder();
           for (int index = 0; index < expectedPhotoChunks; index++) {
             String chunk = incomingPhotoChunksByPart.get(index);
@@ -358,26 +376,24 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
               pendingShareAfterFetch = false;
               pendingDownloadAfterFetch = false;
               incomingPhotoChunksByPart.clear();
+              expectedPhotoChunks = 0;
               return;
             }
             assembled.append(chunk);
           }
-
-          byte[] decodedString = Base64.getDecoder().decode(assembled.toString());
-          Bitmap decoded = BitmapFactory.decodeByteArray(decodedString, 0, decodedString.length);
-          if (decoded != null) {
-            currentPhotoBitmap = decoded;
-            hasFullPhoto = true;
-            photoRequestInFlight = false;
-            incomingPhotoChunksByPart.clear();
-            photoViewerPhotoView.setImageBitmap(decoded);
-            completePendingPhotoActionsIfReady();
-          }
-        } catch (IllegalArgumentException ignored) {
-          photoRequestInFlight = false;
-          pendingShareAfterFetch = false;
-          pendingDownloadAfterFetch = false;
           incomingPhotoChunksByPart.clear();
+          expectedPhotoChunks = 0;
+          decodeAndApplyFullPhotoAsync(assembled.toString());
+        } else {
+          photoRequestInFlight = false;
+          if (pendingDownloadAfterFetch) {
+            pendingDownloadAfterFetch = false;
+            Toast.makeText(
+                    getApplicationContext(),
+                    getString(R.string.download_complete),
+                    Toast.LENGTH_SHORT)
+                .show();
+          }
         }
       }
     }

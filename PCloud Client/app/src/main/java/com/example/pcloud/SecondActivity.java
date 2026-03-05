@@ -135,14 +135,7 @@ public class SecondActivity extends AppCompatActivity
     if (SessionDataCache.isPhotoPendingDeletion(getAlbumName(), photoName)) {
       return;
     }
-    Bitmap decodedPhoto = decodePreviewBitmap(parts[1]);
-    if (decodedPhoto != null) {
-      previewBitmapsByName.put(photoName, decodedPhoto);
-      if (!updatePhotoBitmapIfExists(photoName, decodedPhoto)) {
-        appendPhotoToRows(photoName, decodedPhoto);
-      }
-      SessionDataCache.putAlbumPhotoPreview(getAlbumName(), photoName, decodedPhoto);
-    }
+    decodeAndApplyPreviewAsync(-1, photoName, parts[1]);
   }
 
   private boolean updatePhotoBitmapIfExists(String photoName, Bitmap bitmap) {
@@ -179,7 +172,7 @@ public class SecondActivity extends AppCompatActivity
   private void generatePhotos(String message) {
     if (message != null && !message.equals("")) {
       String[] photosMessage = message.split("\n");
-      for (int i = 1; i < photosMessage.length; i++) {
+      for (int i = 0; i < photosMessage.length; i++) {
         String[] parts = photosMessage[i].split("~", 2);
         if (parts.length < 2) {
           continue;
@@ -585,8 +578,41 @@ public class SecondActivity extends AppCompatActivity
 
   private Bitmap createLoadingBitmap() {
     Bitmap loadingBitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
-    loadingBitmap.eraseColor(0x44FFFFFF);
+    loadingBitmap.eraseColor(0xFFD8D8D8);
     return loadingBitmap;
+  }
+
+  @RequiresApi(api = Build.VERSION_CODES.O)
+  private void decodeAndApplyPreviewAsync(
+      final int placeholderIndex, final String photoName, final String encodedPreview) {
+    new Thread(
+            () -> {
+              final Bitmap decodedPreview = decodePreviewBitmap(encodedPreview);
+              runOnUiThread(
+                  () -> {
+                    if (decodedPreview == null) {
+                      if (placeholderIndex >= 0) {
+                        clearPlaceholderAtIndex(placeholderIndex);
+                      }
+                      return;
+                    }
+                    if (SessionDataCache.isPhotoPendingDeletion(getAlbumName(), photoName)) {
+                      if (placeholderIndex >= 0) {
+                        clearPlaceholderAtIndex(placeholderIndex);
+                      }
+                      return;
+                    }
+                    previewBitmapsByName.put(photoName, decodedPreview);
+                    if (placeholderIndex >= 0) {
+                      replacePlaceholderAtIndex(placeholderIndex, photoName, decodedPreview);
+                    } else if (!updatePhotoBitmapIfExists(photoName, decodedPreview)) {
+                      appendPhotoToRows(photoName, decodedPreview);
+                    }
+                    SessionDataCache.putAlbumPhotoPreview(
+                        getAlbumName(), photoName, decodedPreview);
+                  });
+            })
+        .start();
   }
 
   private void prepareLoadingPlaceholders(int count) {
@@ -957,26 +983,17 @@ public class SecondActivity extends AppCompatActivity
                 assembled.append(chunkPart);
               }
 
-              Bitmap decodedPreview =
-                  hasAllParts ? decodePreviewBitmap(assembled.toString()) : null;
-              if (decodedPreview != null) {
-                if (SessionDataCache.isPhotoPendingDeletion(getAlbumName(), photoName)) {
-                  clearPlaceholderAtIndex(previewPlaceholderOffset + photoIndex);
-                  incomingPreviewChunksByIndex.remove(photoIndex);
-                  incomingPreviewPartsByIndex.remove(photoIndex);
-                  incomingPreviewNameByIndex.remove(photoIndex);
-                  return;
-                }
-                previewBitmapsByName.put(photoName, decodedPreview);
-                replacePlaceholderAtIndex(
-                    previewPlaceholderOffset + photoIndex, photoName, decodedPreview);
-                SessionDataCache.putAlbumPhotoPreview(getAlbumName(), photoName, decodedPreview);
-              } else {
-                clearPlaceholderAtIndex(previewPlaceholderOffset + photoIndex);
-              }
+              String assembledPreview = hasAllParts ? assembled.toString() : null;
               incomingPreviewChunksByIndex.remove(photoIndex);
               incomingPreviewPartsByIndex.remove(photoIndex);
               incomingPreviewNameByIndex.remove(photoIndex);
+
+              if (assembledPreview == null) {
+                clearPlaceholderAtIndex(previewPlaceholderOffset + photoIndex);
+              } else {
+                decodeAndApplyPreviewAsync(
+                    previewPlaceholderOffset + photoIndex, photoName, assembledPreview);
+              }
             }
           } catch (NumberFormatException ignored) {
           }
