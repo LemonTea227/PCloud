@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.view.Menu;
@@ -62,6 +63,7 @@ public class SecondActivity extends AppCompatActivity
   private Runnable pendingDeleteRunnable;
   private String pendingDeletePayload;
   private Snackbar loadingSnackbar;
+  private PowerManager.WakeLock transferWakeLock;
 
   private boolean first;
 
@@ -125,6 +127,7 @@ public class SecondActivity extends AppCompatActivity
         photos.clear();
         adapter.notifyDataSetChanged();
       }
+      acquireTransferWakeLock();
       showLoadingIndicator();
       new Thread(
               new SendMessagesThread(
@@ -155,14 +158,13 @@ public class SecondActivity extends AppCompatActivity
       loadingSnackbar.dismiss();
       loadingSnackbar = null;
     }
+    releaseTransferWakeLock();
   }
 
   @RequiresApi(api = Build.VERSION_CODES.O)
   private void addPhoto(String message) {
     String[] parts = message.split("~", 2);
     if (parts.length < 2) {
-      new Thread(new SendMessagesThread("PHOTOS", MessageCodes.getRequest(), getAlbumName()))
-          .start();
       return;
     }
     String photoName = parts[0];
@@ -355,14 +357,8 @@ public class SecondActivity extends AppCompatActivity
               }
 
               String startPayload = albumName + "\n" + fileName + "\n" + totalParts;
-              String startMessage =
-                  MySocket.buildMessage(
-                      "UPLOAD_PHOTO_START", MessageCodes.getRequest(), startPayload);
-              if (MySocket.getOutput() == null) {
-                return;
-              }
-              MySocket.getOutput().write(startMessage);
-              MySocket.getOutput().flush();
+              SendMessagesThread.queueMessage(
+                  "UPLOAD_PHOTO_START", MessageCodes.getRequest(), startPayload);
 
               for (int partIndex = 0; partIndex < totalParts; partIndex++) {
                 int start = partIndex * chunkSize;
@@ -378,17 +374,31 @@ public class SecondActivity extends AppCompatActivity
                         + totalParts
                         + "\n"
                         + chunk;
-                String chunkMessage =
-                    MySocket.buildMessage(
-                        "UPLOAD_PHOTO_CHUNK", MessageCodes.getRequest(), chunkPayload);
-                if (MySocket.getOutput() == null) {
-                  return;
-                }
-                MySocket.getOutput().write(chunkMessage);
-                MySocket.getOutput().flush();
+                SendMessagesThread.queueMessage(
+                    "UPLOAD_PHOTO_CHUNK", MessageCodes.getRequest(), chunkPayload);
               }
             })
         .start();
+  }
+
+  private void acquireTransferWakeLock() {
+    if (transferWakeLock != null && transferWakeLock.isHeld()) {
+      return;
+    }
+    PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+    if (powerManager == null) {
+      return;
+    }
+    transferWakeLock =
+        powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pcloud:transfer-lock");
+    transferWakeLock.setReferenceCounted(false);
+    transferWakeLock.acquire(10 * 60 * 1000L);
+  }
+
+  private void releaseTransferWakeLock() {
+    if (transferWakeLock != null && transferWakeLock.isHeld()) {
+      transferWakeLock.release();
+    }
   }
 
   public boolean onPrepareOptionsMenu(Menu menu) {
@@ -851,12 +861,12 @@ public class SecondActivity extends AppCompatActivity
       String[] mimeTypeSplit = contentType.split("/");
       mimeType = mimeTypeSplit[mimeTypeSplit.length - 1];
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-      Bitmap imageToUpload = null;
+      byte[] rawImageBytes = null;
       try {
         InputStream stream = getContentResolver().openInputStream(selectedImage);
         if (stream != null) {
           try {
-            imageToUpload = BitmapFactory.decodeStream(stream);
+            rawImageBytes = readAllBytes(stream);
           } finally {
             stream.close();
           }
@@ -864,22 +874,22 @@ public class SecondActivity extends AppCompatActivity
       } catch (IOException e) {
         e.printStackTrace();
       }
-      if (imageToUpload == null) {
+      if (rawImageBytes == null || rawImageBytes.length == 0) {
         Toast.makeText(
                 getApplicationContext(), getString(R.string.upload_photo_error), Toast.LENGTH_SHORT)
             .show();
         return;
       }
 
-      Bitmap resizedForUpload = downscaleForUpload(imageToUpload, 1280);
-      if (resizedForUpload == null) {
+      Bitmap imageToPreview = BitmapFactory.decodeByteArray(rawImageBytes, 0, rawImageBytes.length);
+      if (imageToPreview == null) {
         Toast.makeText(
                 getApplicationContext(), getString(R.string.upload_photo_error), Toast.LENGTH_SHORT)
             .show();
         return;
       }
 
-      Bitmap localPreview = downscaleForUpload(imageToUpload, PREVIEW_MAX_DIMENSION);
+      Bitmap localPreview = downscaleForUpload(imageToPreview, PREVIEW_MAX_DIMENSION);
       if (localPreview != null
           && getIntent().hasExtra("album_name")
           && !SessionDataCache.isPhotoPendingDeletion(getAlbumName(), nameOfFile)) {
@@ -891,17 +901,36 @@ public class SecondActivity extends AppCompatActivity
         SessionDataCache.putAlbumPhotoPreview(albumName, nameOfFile, localPreview);
       }
 
-      // Always use JPEG for network transfer to keep payloads small and responsive on real server.
-      resizedForUpload.compress(Bitmap.CompressFormat.JPEG, 85, byteArrayOutputStream);
       String encodedImage =
-          android.util.Base64.encodeToString(
-              byteArrayOutputStream.toByteArray(), android.util.Base64.NO_WRAP);
+          android.util.Base64.encodeToString(rawImageBytes, android.util.Base64.NO_WRAP);
 
       if (getIntent().hasExtra("album_name")) {
+        acquireTransferWakeLock();
         sendUploadInChunks(
             getIntent().getExtras().getString("album_name"), nameOfFile, encodedImage);
       }
     }
+  }
+
+  private byte[] readAllBytes(InputStream stream) throws IOException {
+    ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+    byte[] data = new byte[16384];
+    int nRead;
+    while ((nRead = stream.read(data, 0, data.length)) != -1) {
+      buffer.write(data, 0, nRead);
+    }
+    return buffer.toByteArray();
+  }
+
+  @Override
+  protected void onResume() {
+    super.onResume();
+    ReceiveMessagesThread.setActivity(this);
+    ReceiveMessagesThread.setListener(SecondActivity.this);
+    if (MySocket.isClosed()) {
+      MySocket.setClosed(false);
+    }
+    new Thread(new ReceiveMessagesThread()).start();
   }
 
   @Override
@@ -1057,8 +1086,10 @@ public class SecondActivity extends AppCompatActivity
 
     if (message.getName().equals("UPLOAD_PHOTO")) {
       if (message.getType().equals(MessageCodes.getConfirm())) {
+        releaseTransferWakeLock();
         addPhoto(message.getData());
       } else if (message.getType().equals(MessageCodes.getUploadPhotoError())) {
+        releaseTransferWakeLock();
         Toast.makeText(
                 getApplicationContext(),
                 getResources().getString(R.string.upload_photo_error),
@@ -1104,6 +1135,12 @@ public class SecondActivity extends AppCompatActivity
       sendPendingPhotoDeleteToServer();
       pendingDeleteRunnable = null;
     }
+  }
+
+  @Override
+  protected void onDestroy() {
+    releaseTransferWakeLock();
+    super.onDestroy();
   }
 
   //    @Override

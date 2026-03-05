@@ -391,27 +391,14 @@ def generate_photos_from_album(sock, album_name):
     :return: message of photos
     """
     lst_encode = []
-    stored_by_name = {}
     album_path = os.path.join(PATH_TO_FILES, USERS[sock].username, album_name)
-
-    photos = USERS[sock].get_photos_data_in_album(album_name)
-    for photo in photos:
-        file_name = ""
-        if len(photo) > 3 and photo[3] is not None:
-            file_name = str(photo[3])
-        if (file_name == "" or "~" in file_name) and len(photo) > 4 and photo[4] is not None:
-            candidate_name = str(photo[4])
-            if candidate_name != "" and "~" not in candidate_name:
-                file_name = candidate_name
-
-        file_data = ""
-        if len(photo) > 5 and photo[5] is not None:
-            file_data = str(photo[5])
-
-        if file_name != "" and "~" not in file_name:
-            stored_by_name[file_name] = file_data
-
-    file_names = set(stored_by_name.keys())
+    file_names = set()
+    for photo_name in USERS[sock].get_photo_names_in_album(album_name):
+        if photo_name is None:
+            continue
+        cleaned_name = str(photo_name).strip()
+        if cleaned_name != "" and "~" not in cleaned_name:
+            file_names.add(cleaned_name)
     if os.path.isdir(album_path):
         try:
             for entry in os.listdir(album_path):
@@ -427,12 +414,7 @@ def generate_photos_from_album(sock, album_name):
             pass
 
     for file_name in sorted(file_names):
-        preview_data = get_preview_encoded_for_photo(
-            sock,
-            album_name,
-            file_name,
-            stored_by_name.get(file_name, ""),
-        )
+        preview_data = get_preview_encoded_for_photo(sock, album_name, file_name, "")
         if preview_data != "":
             lst_encode.append(file_name + "~" + preview_data)
     return "\n".join(lst_encode)
@@ -546,7 +528,6 @@ def build_preview_bytes(source_bytes):
 
 
 def get_preview_encoded_for_photo(sock, album_name, file_name, file_data=""):
-    file_data = backfill_photo_data_from_disk(sock, album_name, file_name, file_data)
     album_path = os.path.join(PATH_TO_FILES, USERS[sock].username, album_name)
     preview_cache_path = get_preview_cache_path(album_path, file_name)
 
@@ -558,6 +539,11 @@ def get_preview_encoded_for_photo(sock, album_name, file_name, file_data=""):
                     return cached
         except IOError:
             pass
+
+    if not file_data:
+        source_from_db = USERS[sock].get_photo_data_in_album(album_name, file_name)
+        if source_from_db:
+            file_data = str(source_from_db)
 
     source_bytes = load_source_bytes_for_preview(album_path, file_name, file_data)
     preview_bytes = build_preview_bytes(source_bytes)
@@ -774,7 +760,7 @@ def async_send_receive(sock):
                 data = recv_by_protocol(
                     sock,
                     aes_key=aes_key,
-                    deadline_seconds=RECV_POLL_SECONDS,
+                    deadline_seconds=RECV_DEADLINE_SECONDS,
                 )
                 if not data:
                     raise socket.error

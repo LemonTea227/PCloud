@@ -4,8 +4,6 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
-import android.graphics.Bitmap;
-import android.graphics.drawable.BitmapDrawable;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
@@ -16,6 +14,8 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.ImageButton;
 import androidx.appcompat.app.AppCompatActivity;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.Objects;
 
@@ -24,6 +24,7 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
   Boolean imageSelected = false;
   String mimeType = "";
   String nameOfFile = "";
+  android.net.Uri selectedImageUri = null;
 
   ImageButton choosePhotoAddPhotoImageButton;
   Button addPhotoButton;
@@ -62,39 +63,22 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
           }
 
           if (imageSelected) {
-            ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-            Bitmap imageToUpload =
-                ((BitmapDrawable) choosePhotoAddPhotoImageButton.getDrawable()).getBitmap();
-            if (mimeType.equals("jpeg") || mimeType.equals("jpg")) {
-              imageToUpload.compress(Bitmap.CompressFormat.JPEG, 100, byteArrayOutputStream);
-            } else if (mimeType.equals("png")) {
-              imageToUpload.compress(Bitmap.CompressFormat.PNG, 100, byteArrayOutputStream);
+            byte[] rawImageBytes = readBytesFromUri(selectedImageUri);
+            if (rawImageBytes == null || rawImageBytes.length == 0) {
+              return;
             }
-            String encodedImage =
-                Base64.encodeToString(byteArrayOutputStream.toByteArray(), Base64.NO_WRAP);
+            String encodedImage = Base64.encodeToString(rawImageBytes, Base64.NO_WRAP);
             if (getIntent().hasExtra("photos")) {
-              //                    Toast.makeText(getApplicationContext(), mimeType,
-              // Toast.LENGTH_SHORT).show();
               String albumName = getIntent().getExtras().getString("photos").split("\n")[0];
-              new Thread(
-                      new SendMessagesThread(
-                          "UPLOAD_PHOTO",
-                          MessageCodes.getRequest(),
-                          albumName + "\n" + nameOfFile + "\n" + encodedImage))
-                  .start();
+              sendUploadInChunks(albumName, nameOfFile, encodedImage);
             } else {
-              new Thread(
-                      new SendMessagesThread(
-                          "UPLOAD_PHOTO",
-                          MessageCodes.getRequest(),
-                          nameOfFile + "\n" + encodedImage))
-                  .start();
+              SendMessagesThread.queueMessage(
+                  "UPLOAD_PHOTO", MessageCodes.getRequest(), nameOfFile + "\n" + encodedImage);
             }
 
           } else {
             Intent goGallery =
                 new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-            MySocket.setClosed(true);
             startActivityForResult(goGallery, RESULT_LOAD_IMAGE);
           }
         });
@@ -105,7 +89,6 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
           public void onClick(View v) {
             Intent goGallery =
                 new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-            MySocket.setClosed(true);
             startActivityForResult(goGallery, RESULT_LOAD_IMAGE);
           }
         });
@@ -117,11 +100,11 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
     ReceiveMessagesThread.setActivity(this);
     ReceiveMessagesThread.setListener(AddPhotoActivity.this);
     if (requestCode == RESULT_LOAD_IMAGE && resultCode == RESULT_OK && data != null) {
-      android.net.Uri selectedImage = data.getData();
-      nameOfFile = getFileName(selectedImage);
-      String[] mimeTypeSplit = getContentResolver().getType(selectedImage).split("/");
+      selectedImageUri = data.getData();
+      nameOfFile = getFileName(selectedImageUri);
+      String[] mimeTypeSplit = getContentResolver().getType(selectedImageUri).split("/");
       mimeType = mimeTypeSplit[mimeTypeSplit.length - 1];
-      choosePhotoAddPhotoImageButton.setImageURI(selectedImage);
+      choosePhotoAddPhotoImageButton.setImageURI(selectedImageUri);
       imageSelected = true;
     }
   }
@@ -138,7 +121,6 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
         goSecond.putExtra("photos", getIntent().getExtras().getString("photos"));
       }
 
-      MySocket.setClosed(true);
       startActivity(goSecond);
     }
     return super.onOptionsItemSelected(item);
@@ -159,7 +141,6 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
         goSecond.putExtra("photos", getIntent().getExtras().getString("photos"));
       }
 
-      MySocket.setClosed(true);
       startActivity(goSecond);
     }
   }
@@ -208,5 +189,67 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
       }
     }
     return result;
+  }
+
+  private byte[] readBytesFromUri(android.net.Uri uri) {
+    if (uri == null) {
+      return null;
+    }
+    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+    try {
+      InputStream inputStream = getContentResolver().openInputStream(uri);
+      if (inputStream == null) {
+        return null;
+      }
+      try {
+        byte[] buffer = new byte[16384];
+        int count;
+        while ((count = inputStream.read(buffer)) != -1) {
+          outputStream.write(buffer, 0, count);
+        }
+      } finally {
+        inputStream.close();
+      }
+      return outputStream.toByteArray();
+    } catch (IOException e) {
+      return null;
+    }
+  }
+
+  private void sendUploadInChunks(String albumName, String fileName, String encodedImage) {
+    if (albumName == null || fileName == null || encodedImage == null) {
+      return;
+    }
+    new Thread(
+            () -> {
+              int chunkSize = 7000;
+              int totalParts = (encodedImage.length() + chunkSize - 1) / chunkSize;
+              if (totalParts <= 0) {
+                return;
+              }
+
+              String startPayload = albumName + "\n" + fileName + "\n" + totalParts;
+              SendMessagesThread.queueMessage(
+                  "UPLOAD_PHOTO_START", MessageCodes.getRequest(), startPayload);
+
+              for (int partIndex = 0; partIndex < totalParts; partIndex++) {
+                int start = partIndex * chunkSize;
+                int end = Math.min(encodedImage.length(), start + chunkSize);
+                String chunk = encodedImage.substring(start, end);
+                String chunkPayload =
+                    albumName
+                        + "\n"
+                        + fileName
+                        + "\n"
+                        + partIndex
+                        + "\n"
+                        + totalParts
+                        + "\n"
+                        + chunk;
+                SendMessagesThread.queueMessage(
+                    "UPLOAD_PHOTO_CHUNK", MessageCodes.getRequest(), chunkPayload);
+              }
+            })
+        .start();
   }
 }

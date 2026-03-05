@@ -238,17 +238,16 @@ class SendMessagesThread implements Runnable {
   private static final Object sendLock = new Object();
   private String message;
 
-  public SendMessagesThread(String name, String type, String data) {
-    this.message = MySocket.buildMessage(name, type, data);
+  public static void queueMessage(String name, String type, String data) {
+    String outbound = MySocket.buildMessage(name, type, data);
+    queueRawMessage(outbound);
   }
 
-  public SendMessagesThread(String name, String type) {
-    this.message = MySocket.buildMessage(name, type, "");
+  public static void queueMessage(String name, String type) {
+    queueMessage(name, type, "");
   }
 
-  @Override
-  public void run() {
-    final String outbound = message;
+  private static void queueRawMessage(String outbound) {
     sendExecutor.execute(
         () -> {
           ClientLogger.log("SendMessagesThread", "Sending message bytes=" + outbound.length());
@@ -262,5 +261,18 @@ class SendMessagesThread implements Runnable {
             MySocket.getOutput().flush();
           }
         });
+  }
+
+  public SendMessagesThread(String name, String type, String data) {
+    this.message = MySocket.buildMessage(name, type, data);
+  }
+
+  public SendMessagesThread(String name, String type) {
+    this.message = MySocket.buildMessage(name, type, "");
+  }
+
+  @Override
+  public void run() {
+    queueRawMessage(message);
   }
 }

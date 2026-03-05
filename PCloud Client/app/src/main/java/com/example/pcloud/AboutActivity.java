@@ -37,7 +37,6 @@ public class AboutActivity extends AppCompatActivity implements ReceiveMessagesL
     if (getIntent().hasExtra("albums")) {
       goMain.putExtra("albums", getIntent().getExtras().getString("albums"));
     }
-    MySocket.setClosed(true);
     startActivity(goMain);
   }
 

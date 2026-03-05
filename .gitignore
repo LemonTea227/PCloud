@@ -10,3 +10,11 @@ log.txt
 
 # Local runtime data
 PCloud Server/PCloudServerDB.db
+
+# Android client build/cache artifacts
+PCloud Client/.gradle/
+PCloud Client/build/
+PCloud Client/app/build/
+PCloud Client/app/captures/
+PCloud Client/app/.cxx/
+PCloud Client/app/.externalNativeBuild/
