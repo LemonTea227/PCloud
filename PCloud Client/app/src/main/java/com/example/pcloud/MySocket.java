@@ -23,7 +23,8 @@ class ConnectionThread implements Runnable {
         MySocket.setSocket(socket);
         MySocket.setOutput(new PrintWriter(socket.getOutputStream()));
         MySocket.setInput(new BufferedReader(new InputStreamReader(socket.getInputStream())));
-        ClientLogger.log("ConnectionThread", "Connected to server at " + primaryIp + ":" + MySocket.getPort());
+        ClientLogger.log(
+            "ConnectionThread", "Connected to server at " + primaryIp + ":" + MySocket.getPort());
         break;
       } catch (IOException e) {
         ClientLogger.logError(
@@ -57,9 +58,7 @@ public class MySocket {
 
   private static BufferedReader input;
 
-  private static String INERIP = "10.0.2.2";
-
-  private static String IP = "10.0.2.2"; // configured by run.ps1
+  private static String INERIP = "10.0.2.2";private static String IP = "10.0.2.2"; // configured by run.ps1
 
   private static int Port = 22703;
 
@@ -243,20 +242,57 @@ class HandelMessage {
   private String data;
 
   public HandelMessage(String mes) {
-    String[] sp_mes = mes.split("\n\ndata:");
-    String[] headers = sp_mes[0].split("\n");
-    this.name = headers[0].substring(5);
-    this.type = headers[1].substring(5);
-    this.size = Integer.parseInt(headers[2].substring(5));
+    this.name = "";
+    this.type = "";
+    this.size = 0;
     this.data = "";
-    for (int i = 1; i < sp_mes.length - 1; i++) {
-      this.data += sp_mes[i] + "\n\ndata:";
+
+    if (mes == null || mes.equals("")) {
+      return;
     }
-    if (sp_mes.length != 1) {
-      this.data += sp_mes[sp_mes.length - 1];
-    }
-    if (MySocket.getAESkey().length != 0) {
-      data = AESEncryptDecrypt.decrypt(data, MySocket.getAESkey());
+
+    try {
+      String[] sp_mes = mes.split("\n\ndata:", -1);
+      if (sp_mes.length == 0) {
+        return;
+      }
+
+      String[] headers = sp_mes[0].split("\n");
+      if (headers.length >= 1 && headers[0].startsWith("name:")) {
+        this.name = headers[0].substring(5);
+      }
+      if (headers.length >= 2 && headers[1].startsWith("type:")) {
+        this.type = headers[1].substring(5);
+      }
+      if (headers.length >= 3 && headers[2].startsWith("size:")) {
+        try {
+          this.size = Integer.parseInt(headers[2].substring(5));
+        } catch (NumberFormatException ignored) {
+          this.size = 0;
+        }
+      }
+
+      StringBuilder builder = new StringBuilder();
+      for (int i = 1; i < sp_mes.length; i++) {
+        if (i > 1) {
+          builder.append("\n\ndata:");
+        }
+        builder.append(sp_mes[i]);
+      }
+      this.data = builder.toString();
+
+      if (MySocket.getAESkey().length != 0 && !this.data.equals("")) {
+        String decrypted = AESEncryptDecrypt.decrypt(this.data, MySocket.getAESkey());
+        this.data = decrypted == null ? "" : decrypted;
+      }
+      if (this.data == null) {
+        this.data = "";
+      }
+    } catch (Exception ignored) {
+      this.name = "";
+      this.type = "";
+      this.size = 0;
+      this.data = "";
     }
   }
 

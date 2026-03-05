@@ -9,12 +9,6 @@
         app:showAsAction="always" />
 
     <item
-        android:id="@+id/selectPhotosMenuItem"
-        android:icon="@android:drawable/ic_menu_edit"
-        android:title="@string/select"
-        app:showAsAction="ifRoom" />
-
-    <item
         android:id="@+id/sharePhotosMenuItem"
         android:icon="@android:drawable/ic_menu_share"
         android:title="@string/share"

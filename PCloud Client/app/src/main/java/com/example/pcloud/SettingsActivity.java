@@ -58,7 +58,6 @@ public class SettingsActivity extends AppCompatActivity implements ReceiveMessag
     if (getIntent().hasExtra("albums")) {
       goMain.putExtra("albums", getIntent().getExtras().getString("albums"));
     }
-    MySocket.setClosed(true);
     startActivity(goMain);
   }
 

@@ -43,11 +43,25 @@
     <string name="cancel_selection">Cancel selection</string>
     <string name="share">Share</string>
     <string name="delete">Delete</string>
-    <string name="zoom_in">Zoom in</string>
+    <string name="zoom_in">Download original</string>
     <string name="zoom_out">Zoom out</string>
     <string name="reset_zoom">Reset zoom</string>
     <string name="no_photos_selected">No photos selected</string>
     <string name="photos_deleted">Photos deleted</string>
     <string name="delete_photo_error">Couldn\'t delete selected photos</string>
     <string name="share_error">Couldn\'t share selected photos</string>
+    <string name="delete_album_error">Couldn\'t delete selected albums</string>
+    <string name="albums_deleted">Albums deleted</string>
+    <string name="delete_album_confirm_title">Delete album</string>
+    <string name="delete_albums_confirm_title">Delete albums</string>
+    <string name="delete_album_confirm_message">This album is not empty. Delete it?</string>
+    <string name="delete_albums_confirm_message">Delete selected albums?</string>
+    <string name="confirm">Confirm</string>
+    <string name="cancel">Cancel</string>
+    <string name="undo">Undo</string>
+    <string name="redo">Redo</string>
+    <string name="loading_photo">Loading photo</string>
+    <string name="download_original">Download original</string>
+    <string name="downloading_photo">Downloading original image…</string>
+    <string name="download_complete">Original image loaded</string>
 </resources>

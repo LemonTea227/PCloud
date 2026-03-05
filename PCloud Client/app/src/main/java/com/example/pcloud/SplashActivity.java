@@ -27,6 +27,7 @@ public class SplashActivity extends AppCompatActivity implements ReceiveMessages
     ClientLogger.init(getApplicationContext());
     ClientLogger.installCrashHandler(getApplicationContext());
     ClientLogger.log("SplashActivity", "Splash started and crash logger initialized");
+    SessionDataCache.clearAll();
 
     if (getIntent().hasExtra("LostConnection")) {
       if (Objects.requireNonNull(getIntent().getExtras()).getBoolean("LostConnection")) {
@@ -101,7 +102,6 @@ public class SplashActivity extends AppCompatActivity implements ReceiveMessages
       }
 
       Intent goLogin = new Intent(getApplicationContext(), LoginActivity.class);
-      MySocket.setClosed(true);
       startActivity(goLogin);
     } else if (splashMassage.getName().toUpperCase(Locale.ROOT).equals("GENERATOR")) {
       G = new BigInteger(splashMassage.getData());
@@ -120,7 +120,6 @@ public class SplashActivity extends AppCompatActivity implements ReceiveMessages
       } else {
         ClientLogger.log("SplashActivity", "Auto login failed, opening login page");
         Intent goLogin = new Intent(getApplicationContext(), LoginActivity.class);
-        MySocket.setClosed(true);
         startActivity(goLogin);
       }
     } else if (splashMassage.getName().toUpperCase(Locale.ROOT).equals("ALBUMS")
@@ -129,7 +128,6 @@ public class SplashActivity extends AppCompatActivity implements ReceiveMessages
       if (splashMassage.getType().equals(MessageCodes.getConfirm())) {
         Intent goMain = new Intent(getApplicationContext(), MainActivity.class);
         goMain.putExtra("albums", splashMassage.getData());
-        MySocket.setClosed(true);
         startActivity(goMain);
       }
     }

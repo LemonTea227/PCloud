@@ -15,14 +15,6 @@
         app:showAsAction="ifRoom" />
 
     <item
-        android:id="@+id/zoomInPhotoViewerMenuItem"
-        android:title="@string/zoom_in" />
-
-    <item
-        android:id="@+id/zoomOutPhotoViewerMenuItem"
-        android:title="@string/zoom_out" />
-
-    <item
-        android:id="@+id/resetZoomPhotoViewerMenuItem"
-        android:title="@string/reset_zoom" />
+        android:id="@+id/downloadPhotoViewerMenuItem"
+        android:title="@string/download_original" />
 </menu>

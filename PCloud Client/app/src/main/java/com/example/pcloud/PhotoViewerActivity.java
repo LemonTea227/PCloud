@@ -7,6 +7,9 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.GestureDetector;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -15,6 +18,7 @@ import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 import com.github.chrisbanes.photoview.PhotoView;
+import com.google.android.material.snackbar.Snackbar;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -24,6 +28,11 @@ import java.util.Objects;
 public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMessagesListener {
   PhotoView photoViewerPhotoView;
   private Bitmap currentPhotoBitmap;
+  private final Handler deleteHandler = new Handler(Looper.getMainLooper());
+  private Runnable pendingDeleteRunnable;
+  private StringBuilder incomingPhotoChunks = new StringBuilder();
+  private int expectedPhotoChunks = 0;
+  private int receivedPhotoChunks = 0;
 
   //    ImageView photoViewerImageView;
 
@@ -43,12 +52,50 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
     getSupportActionBar().setDisplayShowHomeEnabled(true);
 
     photoViewerPhotoView = findViewById(R.id.photoViewerPhotoView);
+    photoViewerPhotoView.setZoomable(true);
+    photoViewerPhotoView.setMinimumScale(1.0f);
+    photoViewerPhotoView.setMediumScale(2.5f);
+    photoViewerPhotoView.setMaximumScale(5.0f);
+    photoViewerPhotoView.setOnDoubleTapListener(
+        new GestureDetector.SimpleOnGestureListener() {
+          @Override
+          public boolean onDoubleTap(android.view.MotionEvent e) {
+            float current = photoViewerPhotoView.getScale();
+            if (current < photoViewerPhotoView.getMediumScale()) {
+              photoViewerPhotoView.setScale(
+                  photoViewerPhotoView.getMediumScale(), e.getX(), e.getY(), true);
+            } else if (current < photoViewerPhotoView.getMaximumScale()) {
+              photoViewerPhotoView.setScale(
+                  photoViewerPhotoView.getMaximumScale(), e.getX(), e.getY(), true);
+            } else {
+              photoViewerPhotoView.setScale(
+                  photoViewerPhotoView.getMinimumScale(), e.getX(), e.getY(), true);
+            }
+            return true;
+          }
+        });
     //        photoViewerImageView = findViewById(R.id.photoViewerImageView);
 
     if (getIntent().hasExtra("album_name")) {
       setTitle(getIntent().getExtras().getString("album_name"));
     }
 
+    if (getIntent().hasExtra("album_name") && getIntent().hasExtra("photo_name")) {
+      if (getIntent().hasExtra("preview_bytes")) {
+        byte[] preview = getIntent().getByteArrayExtra("preview_bytes");
+        if (preview != null && preview.length > 0) {
+          Bitmap previewBitmap = BitmapFactory.decodeByteArray(preview, 0, preview.length);
+          if (previewBitmap != null) {
+            photoViewerPhotoView.setImageBitmap(previewBitmap);
+          }
+        }
+      }
+
+      requestFullPhoto();
+    }
+  }
+
+  private void requestFullPhoto() {
     if (getIntent().hasExtra("album_name") && getIntent().hasExtra("photo_name")) {
       new Thread(
               new SendMessagesThread(
@@ -80,14 +127,11 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
       case R.id.deletePhotoViewerMenuItem:
         deleteCurrentPhoto();
         return true;
-      case R.id.zoomInPhotoViewerMenuItem:
-        photoViewerPhotoView.setScale(photoViewerPhotoView.getScale() * 1.25f, true);
-        return true;
-      case R.id.zoomOutPhotoViewerMenuItem:
-        photoViewerPhotoView.setScale(Math.max(1.0f, photoViewerPhotoView.getScale() / 1.25f), true);
-        return true;
-      case R.id.resetZoomPhotoViewerMenuItem:
-        photoViewerPhotoView.setScale(1.0f, true);
+      case R.id.downloadPhotoViewerMenuItem:
+        Toast.makeText(
+                getApplicationContext(), getString(R.string.downloading_photo), Toast.LENGTH_SHORT)
+            .show();
+        requestFullPhoto();
         return true;
     }
     return super.onOptionsItemSelected(item);
@@ -95,13 +139,18 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
 
   private void shareCurrentPhoto() {
     if (currentPhotoBitmap == null) {
-      Toast.makeText(getApplicationContext(), getString(R.string.share_error), Toast.LENGTH_SHORT).show();
+      Toast.makeText(getApplicationContext(), getString(R.string.share_error), Toast.LENGTH_SHORT)
+          .show();
       return;
     }
-    String photoName = getIntent().hasExtra("photo_name") ? getIntent().getExtras().getString("photo_name") : "photo";
+    String photoName =
+        getIntent().hasExtra("photo_name")
+            ? getIntent().getExtras().getString("photo_name")
+            : "photo";
     android.net.Uri uri = saveBitmapForShare(currentPhotoBitmap, photoName);
     if (uri == null) {
-      Toast.makeText(getApplicationContext(), getString(R.string.share_error), Toast.LENGTH_SHORT).show();
+      Toast.makeText(getApplicationContext(), getString(R.string.share_error), Toast.LENGTH_SHORT)
+          .show();
       return;
     }
     Intent shareIntent = new Intent(Intent.ACTION_SEND);
@@ -144,7 +193,28 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
         getIntent().getExtras().getString("album_name")
             + "\n"
             + getIntent().getExtras().getString("photo_name");
-    new Thread(new SendMessagesThread("DEL_PHOTOS", MessageCodes.getRequest(), payload)).start();
+
+    if (pendingDeleteRunnable != null) {
+      deleteHandler.removeCallbacks(pendingDeleteRunnable);
+    }
+
+    pendingDeleteRunnable =
+        () ->
+            new Thread(new SendMessagesThread("DEL_PHOTOS", MessageCodes.getRequest(), payload))
+                .start();
+    deleteHandler.postDelayed(pendingDeleteRunnable, 5000);
+
+    Snackbar.make(photoViewerPhotoView, getString(R.string.photos_deleted), Snackbar.LENGTH_LONG)
+        .setDuration(5000)
+        .setAction(
+            getString(R.string.redo),
+            v -> {
+              if (pendingDeleteRunnable != null) {
+                deleteHandler.removeCallbacks(pendingDeleteRunnable);
+                pendingDeleteRunnable = null;
+              }
+            })
+        .show();
   }
 
   @Override
@@ -158,7 +228,6 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
       goSecond.putExtra("album_name", getIntent().getExtras().getString("album_name"));
     }
 
-    MySocket.setClosed(true);
     goSecond.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     startActivity(goSecond);
   }
@@ -181,13 +250,70 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
             .show();
       }
     }
+
+    if (message.getName().equals("PHOTO_COUNT")) {
+      if (message.getType().equals(MessageCodes.getConfirm())) {
+        String[] lines = message.getData().split("\n");
+        if (lines.length >= 3) {
+          try {
+            expectedPhotoChunks = Integer.parseInt(lines[2]);
+          } catch (NumberFormatException ignored) {
+            expectedPhotoChunks = 0;
+          }
+          receivedPhotoChunks = 0;
+          incomingPhotoChunks = new StringBuilder();
+        }
+      }
+    }
+
+    if (message.getName().equals("PHOTO_CHUNK")) {
+      if (message.getType().equals(MessageCodes.getConfirm())) {
+        String[] lines = message.getData().split("\n", 5);
+        if (lines.length >= 5) {
+          incomingPhotoChunks.append(lines[4]);
+          receivedPhotoChunks++;
+        }
+      }
+    }
+
+    if (message.getName().equals("PHOTO_DONE")) {
+      if (message.getType().equals(MessageCodes.getConfirm())
+          && expectedPhotoChunks > 0
+          && receivedPhotoChunks >= expectedPhotoChunks) {
+        try {
+          byte[] decodedString = Base64.getDecoder().decode(incomingPhotoChunks.toString());
+          Bitmap decoded = BitmapFactory.decodeByteArray(decodedString, 0, decodedString.length);
+          if (decoded != null) {
+            currentPhotoBitmap = decoded;
+            photoViewerPhotoView.setImageBitmap(decoded);
+            Toast.makeText(
+                    getApplicationContext(),
+                    getString(R.string.download_complete),
+                    Toast.LENGTH_SHORT)
+                .show();
+          }
+        } catch (IllegalArgumentException ignored) {
+        }
+      }
+    }
+
     if (message.getName().equals("DEL_PHOTOS")) {
       if (message.getType().equals(MessageCodes.getConfirm())) {
-        Toast.makeText(getApplicationContext(), getString(R.string.photos_deleted), Toast.LENGTH_SHORT)
+        if (pendingDeleteRunnable != null) {
+          deleteHandler.removeCallbacks(pendingDeleteRunnable);
+          pendingDeleteRunnable = null;
+        }
+        Toast.makeText(
+                getApplicationContext(), getString(R.string.photos_deleted), Toast.LENGTH_SHORT)
             .show();
         onBackPressed();
       } else if (message.getType().equals(MessageCodes.getDelPhotosError())) {
-        Toast.makeText(getApplicationContext(), getString(R.string.delete_photo_error), Toast.LENGTH_SHORT)
+        if (pendingDeleteRunnable != null) {
+          deleteHandler.removeCallbacks(pendingDeleteRunnable);
+          pendingDeleteRunnable = null;
+        }
+        Toast.makeText(
+                getApplicationContext(), getString(R.string.delete_photo_error), Toast.LENGTH_SHORT)
             .show();
       }
     }

@@ -478,42 +478,34 @@ class User(object):
         username = str(username).strip()
         if username == "":
             return False
+        self.user_id = user_id
+        self.username = username
+        self.password = password
+        self.last_online = str(datetime.datetime.now())
+        self.full_name = full_name
+        self.birth_date = birth_date
 
         self.db.open_DB()
         try:
-            self.db.current.execute("SELECT 1 FROM users WHERE username = ? LIMIT 1", (username,))
-            exists = self.db.current.fetchone() is not None
-            print("REGISTER DB DEBUG user=%r exists=%r db=%r" % (username, exists, DBFileName))
-        finally:
-            self.db.close_DB()
-
-        if exists:
-            print("not reg")
-            return False
-        else:
-            self.user_id = user_id
-            self.username = username
-            self.password = password
-            self.last_online = str(datetime.datetime.now())
-            self.full_name = full_name
-            self.birth_date = birth_date
-            self.db = UserAlbumPhotoORM()
-
-            # insert into the database
-            self.db.insert_DB(
-                "users",
-                ["id", "username", "password", "last_online", "full_name", "birth_date"],
-                [
+            self.db.current.execute(
+                "INSERT INTO users (id, username, password, last_online, full_name, birth_date) VALUES (?, ?, ?, ?, ?, ?)",
+                (
                     self.user_id,
                     self.username,
                     self.password,
                     self.last_online,
                     self.full_name,
                     self.birth_date,
-                ],
+                ),
             )
+            self.db.commit()
             print("reg")
             return True
+        except sqlite3.IntegrityError as e:
+            print("not reg: %s" % str(e))
+            return False
+        finally:
+            self.db.close_DB()
 
     def del_user(self):
         # delete from the database
@@ -532,7 +524,6 @@ class User(object):
                 (username,),
             )
             row = self.db.current.fetchone()
-            print("LOGIN DB DEBUG user=%r row_exists=%r db=%r" % (username, row is not None, DBFileName))
             if row:
                 user_data = []
                 for item in row:
@@ -543,7 +534,6 @@ class User(object):
                 stored_password = (
                     str(user_data[2]).replace("\x00", "").replace("\r", "").strip().lower()
                 )
-                print("LOGIN DB DEBUG candidate=%r stored=%r" % (candidate_password, stored_password))
                 if stored_password == candidate_password:
                     self.user_id = user_data[0]
                     self.username = user_data[1]
@@ -568,24 +558,43 @@ class User(object):
 
     def get_photos_in_album(self, album_name):
         album_id = self.get_album_id_by_album_name(album_name)
+        if album_id is None:
+            return []
         return self.db.get_all_rows_DB("photos", ["album_id"], [album_id])
 
     def get_photos_data_in_album(self, album_name):
         album_id = self.get_album_id_by_album_name(album_name)
+        if album_id is None:
+            return []
         return self.db.get_all_rows_DB("photos", ["album_id"], [album_id])
 
     def get_photo_data_in_album(self, album_name, file_name):
         album_id = self.get_album_id_by_album_name(album_name)
+        if album_id is None:
+            return None
         row = self.db.get_row_DB("photos", ["album_id", "file_name"], [album_id, file_name])
         if row and len(row) > 5:
             return row[5]
         return None
 
     def get_album_id_by_album_name(self, album_name):
-        return self.db.get_row_DB("albums", ["album_name"], [album_name])[0]
+        self.db.open_DB()
+        try:
+            self.db.current.execute(
+                "SELECT id FROM albums WHERE creator_id = ? AND album_name = ? LIMIT 1",
+                (self.user_id, album_name),
+            )
+            row = self.db.current.fetchone()
+            if row is None:
+                return None
+            return str(row[0])
+        finally:
+            self.db.close_DB()
 
     def delete_photos_in_album(self, album_name, file_names):
         album_id = self.get_album_id_by_album_name(album_name)
+        if album_id is None:
+            return
         for file_name in file_names:
             self.db.delete_DB("photos", ["album_id", "file_name"], [album_id, file_name])
 

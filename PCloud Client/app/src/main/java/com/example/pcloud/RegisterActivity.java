@@ -244,7 +244,6 @@ public class RegisterActivity extends AppCompatActivity implements ReceiveMessag
         && birthDateRegister.getText().toString().equals("")) {
       Intent goLogin = new Intent(getApplicationContext(), LoginActivity.class);
       goLogin.putExtra("username", usernameRegister.getText().toString());
-      MySocket.setClosed(true);
       startActivity(goLogin);
     } else {
       usernameRegister.setText("");
@@ -284,7 +283,6 @@ public class RegisterActivity extends AppCompatActivity implements ReceiveMessag
             .show();
         Intent goMain = new Intent(getApplicationContext(), MainActivity.class);
         goMain.putExtra("albums", message.getData());
-        MySocket.setClosed(true);
         startActivity(goMain);
       } else if (message.getType().equals(MessageCodes.getAlbumsError())) {
         Toast.makeText(

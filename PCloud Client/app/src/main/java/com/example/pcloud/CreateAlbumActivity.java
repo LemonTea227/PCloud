@@ -91,7 +91,6 @@ public class CreateAlbumActivity extends AppCompatActivity implements ReceiveMes
     if (getIntent().hasExtra("albums")) {
       goMain.putExtra("albums", getIntent().getExtras().getString("albums"));
     }
-    MySocket.setClosed(true);
     startActivity(goMain);
   }
 
@@ -112,7 +111,6 @@ public class CreateAlbumActivity extends AppCompatActivity implements ReceiveMes
       if (message.getType().equals(MessageCodes.getConfirm())) {
         Intent goMain = new Intent(getApplicationContext(), MainActivity.class);
         goMain.putExtra("albums", message.getData());
-        MySocket.setClosed(true);
         startActivity(goMain);
       } else if (message.getType().equals(MessageCodes.getAlbumsError())) {
         Toast.makeText(

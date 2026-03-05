@@ -22,6 +22,15 @@
             android:scaleType="fitCenter"
             tools:srcCompat="@tools:sample/avatars" />
 
+            <ImageView
+                android:id="@+id/firstPhotoSelectedIndicator"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_alignParentEnd="true"
+                android:layout_margin="4dp"
+                android:src="@android:drawable/checkbox_on_background"
+                android:visibility="gone" />
+
     </RelativeLayout>
 
     <RelativeLayout
@@ -38,6 +47,15 @@
             android:scaleType="fitCenter"
             tools:srcCompat="@tools:sample/avatars" />
 
+            <ImageView
+                android:id="@+id/secondPhotoSelectedIndicator"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_alignParentEnd="true"
+                android:layout_margin="4dp"
+                android:src="@android:drawable/checkbox_on_background"
+                android:visibility="gone" />
+
     </RelativeLayout>
 
     <RelativeLayout
@@ -53,6 +71,15 @@
             android:background="@null"
             android:scaleType="fitCenter"
             tools:srcCompat="@tools:sample/avatars" />
+
+            <ImageView
+                android:id="@+id/thirdPhotoSelectedIndicator"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_alignParentEnd="true"
+                android:layout_margin="4dp"
+                android:src="@android:drawable/checkbox_on_background"
+                android:visibility="gone" />
     </RelativeLayout>
 
     <RelativeLayout
@@ -67,6 +94,15 @@
             android:background="@null"
             android:scaleType="fitCenter"
             tools:srcCompat="@tools:sample/avatars" />
+
+        <ImageView
+            android:id="@+id/fourthPhotoSelectedIndicator"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_alignParentEnd="true"
+            android:layout_margin="4dp"
+            android:src="@android:drawable/checkbox_on_background"
+            android:visibility="gone" />
     </RelativeLayout>
 
 </LinearLayout>

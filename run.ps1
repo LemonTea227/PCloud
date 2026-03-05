@@ -2,6 +2,7 @@ param(
     [switch]$SkipClient,
     [switch]$BackgroundServer,
     [switch]$SkipInstall,
+    [switch]$AutoDetectPhoneHost,
     [string]$ServerHost = "10.0.2.2",
     [int]$ServerPort = 22703
 )
@@ -11,6 +12,7 @@ $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $serverDir = Join-Path $repoRoot "PCloud Server"
 $clientDir = Join-Path $repoRoot "PCloud Client"
 $socketFile = Join-Path $clientDir "app/src/main/java/com/example/pcloud/MySocket.java"
+$phoneHostScript = Join-Path $repoRoot "set-phone-host.ps1"
 $gradlePropertiesFile = Join-Path $clientDir "gradle.properties"
 
 function Ensure-Command([string]$name) {
@@ -267,6 +269,68 @@ function Get-ConnectedDeviceCount([string]$adbPath) {
     return @($lines | Select-String -Pattern "\tdevice$").Count
 }
 
+function Get-ConnectedPhysicalDeviceSerial([string]$adbPath) {
+    if (-not $adbPath) { return $null }
+    try {
+        $lines = & $adbPath devices
+        $physical = $lines | Where-Object {
+            $_ -match "\tdevice$" -and $_ -notmatch "^emulator-"
+        } | Select-Object -First 1
+        if (-not $physical) { return $null }
+        return ($physical -split "\t")[0]
+    } catch {
+        return $null
+    }
+}
+
+function Get-PreferredLanIPv4 {
+    $candidates = @()
+    try {
+        $configs = Get-NetIPConfiguration -ErrorAction Stop | Where-Object {
+            $_.NetAdapter -and $_.NetAdapter.Status -eq "Up" -and $_.IPv4Address
+        }
+        foreach ($cfg in $configs) {
+            foreach ($ipObj in $cfg.IPv4Address) {
+                $ip = $ipObj.IPAddress
+                if (-not $ip) { continue }
+                if ($ip -like "127.*" -or $ip -like "169.254.*" -or $ip -eq "0.0.0.0") { continue }
+                $score = 0
+                if ($cfg.IPv4DefaultGateway) { $score += 10 }
+                if ($cfg.NetAdapter.InterfaceDescription -match "Wi-?Fi|Wireless") { $score += 4 }
+                if ($cfg.NetAdapter.InterfaceDescription -match "Ethernet") { $score += 3 }
+                if ($cfg.NetAdapter.InterfaceDescription -match "Hyper-V|Virtual|VMware|TAP|Loopback") { $score -= 20 }
+                $isPrivate = $ip -like "10.*" -or $ip -like "192.168.*" -or ($ip -match "^172\.(1[6-9]|2[0-9]|3[0-1])\.")
+                if ($isPrivate) { $score += 5 }
+                $candidates += [PSCustomObject]@{ IP = $ip; Score = $score }
+            }
+        }
+    } catch {
+        return $null
+    }
+    if (-not $candidates -or $candidates.Count -eq 0) {
+        return $null
+    }
+    return ($candidates | Sort-Object -Property Score -Descending | Select-Object -First 1).IP
+}
+
+function Set-ClientSocketViaHelper([string]$socketHost, [int]$port) {
+    if (-not (Test-Path $phoneHostScript)) {
+        Set-ClientSocketConfig -file $socketFile -socketHost $socketHost -socketPort $port
+        return
+    }
+
+    $mode = "custom"
+    if ($socketHost -eq "10.0.2.2") {
+        $mode = "emulator"
+    }
+
+    if ($mode -eq "custom") {
+        & $phoneHostScript -Mode custom -CustomHost $socketHost -Port $port
+    } else {
+        & $phoneHostScript -Mode emulator -Port $port
+    }
+}
+
 function Ensure-ClientDevice([string]$adbPath) {
     if (-not $adbPath) {
         return $false
@@ -338,11 +402,48 @@ if (-not $python2Exe) {
 }
 $adbPath = Get-AdbPath
 
-if (-not $SkipClient) {
-    Write-Host "[2/4] Updating client socket target (host=$ServerHost, port=$ServerPort)..."
-    Set-ClientSocketConfig -file $socketFile -socketHost $ServerHost -socketPort $ServerPort
+$resolvedServerHost = $ServerHost
+if (-not $SkipClient -and ($AutoDetectPhoneHost -or $ServerHost -eq "10.0.2.2")) {
+    $physicalDevice = Get-ConnectedPhysicalDeviceSerial -adbPath $adbPath
+    if ($physicalDevice) {
+        $lanIp = Get-PreferredLanIPv4
+        if ($lanIp) {
+            $resolvedServerHost = $lanIp
+            Write-Host "Physical device '$physicalDevice' detected. Using LAN host $resolvedServerHost"
+        } else {
+            Write-Host "Physical device detected but LAN IP auto-detection failed; keeping host $resolvedServerHost"
+        }
+    }
+}
 
-    Write-Host "[3/4] Building/installing Android client..."
+Write-Host "[2/4] Starting server..."
+Stop-StalePCloudServers
+$startServerInBackground = $BackgroundServer -or (-not $SkipClient)
+$serverProcess = $null
+if ($startServerInBackground) {
+    $serverProcess = Start-Process -FilePath $python2Exe -ArgumentList "pcloud_server.py" -WorkingDirectory $serverDir -PassThru
+    Start-Sleep -Seconds 2
+    if ($serverProcess.HasExited) {
+        throw "Server process exited immediately. Check 'PCloud Server' dependencies and Python 2 availability."
+    }
+    Write-Host "Server running in background (PID $($serverProcess.Id)). Use Stop-Process -Id $($serverProcess.Id) to stop it."
+}
+elseif ($SkipClient) {
+    Write-Host "Server starting in foreground. Press Ctrl+C in this terminal to stop it."
+    Push-Location $serverDir
+    try {
+        & $python2Exe "pcloud_server.py"
+    } finally {
+        Pop-Location
+    }
+    exit 0
+}
+
+if (-not $SkipClient) {
+    Write-Host "[3/4] Updating client socket target (host=$resolvedServerHost, port=$ServerPort)..."
+    Set-ClientSocketViaHelper -socketHost $resolvedServerHost -port $ServerPort
+
+    Write-Host "[4/4] Building/installing Android client..."
     if (-not (Test-Java11OrNewer)) {
         throw "Android build requires Java 11+. Please set JAVA_HOME to a JDK 11+ installation."
     }
@@ -406,21 +507,6 @@ if (-not $SkipClient) {
     }
 }
 
-Write-Host "[4/4] Starting server..."
-Stop-StalePCloudServers
-if ($BackgroundServer) {
-    $serverProcess = Start-Process -FilePath $python2Exe -ArgumentList "pcloud_server.py" -WorkingDirectory $serverDir -PassThru
-    Start-Sleep -Seconds 2
-    if ($serverProcess.HasExited) {
-        throw "Server process exited immediately. Check 'PCloud Server' dependencies and Python 2 availability."
-    }
-    Write-Host "Server running in background (PID $($serverProcess.Id)). Use Stop-Process -Id $($serverProcess.Id) to stop it."
-} else {
-    Write-Host "Server starting in foreground. Press Ctrl+C in this terminal to stop it."
-    Push-Location $serverDir
-    try {
-        & $python2Exe "pcloud_server.py"
-    } finally {
-        Pop-Location
-    }
+if ($SkipClient -and $startServerInBackground) {
+    Write-Host "Server started. Client step skipped by request."
 }

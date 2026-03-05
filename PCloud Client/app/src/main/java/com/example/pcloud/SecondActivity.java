@@ -8,6 +8,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.view.Menu;
@@ -20,6 +22,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import com.google.android.material.snackbar.Snackbar;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -27,9 +30,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,8 +51,16 @@ public class SecondActivity extends AppCompatActivity
   private final LinkedHashSet<String> selectedPhotoNames = new LinkedHashSet<>();
   private LinkedHashSet<String> pendingDeletePhotoNames = new LinkedHashSet<>();
   private final Map<String, Bitmap> previewBitmapsByName = new ConcurrentHashMap<>();
+  private final Map<Integer, StringBuilder> incomingPreviewChunksByIndex = new HashMap<>();
+  private final Map<Integer, Integer> incomingPreviewPartsByIndex = new HashMap<>();
+  private final Map<Integer, Integer> incomingPreviewPartCountByIndex = new HashMap<>();
+  private final Map<Integer, String> incomingPreviewNameByIndex = new HashMap<>();
+  private int expectedPreviewCount;
+  private int previewPlaceholderOffset;
   private Menu optionsMenu;
   private boolean selectionMode;
+  private final Handler deleteHandler = new Handler(Looper.getMainLooper());
+  private Runnable pendingDeleteRunnable;
 
   private boolean first;
 
@@ -74,15 +85,11 @@ public class SecondActivity extends AppCompatActivity
     nameOfFile = "";
     first = true;
     selectionMode = false;
+    expectedPreviewCount = 0;
+    previewPlaceholderOffset = 0;
 
     if (getIntent().hasExtra("album_name")) {
       setTitle(getIntent().getExtras().getString("album_name"));
-      new Thread(
-              new SendMessagesThread(
-                  "PHOTOS",
-                  MessageCodes.getRequest(),
-                  getIntent().getExtras().getString("album_name")))
-          .start();
     }
 
     if (getIntent().hasExtra("album_name") && getIntent().hasExtra("albums")) {
@@ -104,20 +111,67 @@ public class SecondActivity extends AppCompatActivity
 
     photosSecondRecyclerView.setLayoutManager(layoutManager);
     photosSecondRecyclerView.setAdapter(adapter);
+
+    String albumName = getAlbumName();
+    if (!albumName.equals("")) {
+      restoreCachedPhotos(albumName);
+      new Thread(
+              new SendMessagesThread(
+                  "PHOTOS", MessageCodes.getRequest(), buildPhotosDeltaRequestPayload(albumName)))
+          .start();
+    }
   }
 
   @RequiresApi(api = Build.VERSION_CODES.O)
   private void addPhoto(String message) {
     String[] parts = message.split("~", 2);
     if (parts.length < 2) {
+      new Thread(new SendMessagesThread("PHOTOS", MessageCodes.getRequest(), getAlbumName()))
+          .start();
       return;
     }
     String photoName = parts[0];
+    if (SessionDataCache.isPhotoPendingDeletion(getAlbumName(), photoName)) {
+      return;
+    }
     Bitmap decodedPhoto = decodePreviewBitmap(parts[1]);
     if (decodedPhoto != null) {
       previewBitmapsByName.put(photoName, decodedPhoto);
-      appendPhotoToRows(photoName, decodedPhoto);
+      if (!updatePhotoBitmapIfExists(photoName, decodedPhoto)) {
+        appendPhotoToRows(photoName, decodedPhoto);
+      }
+      SessionDataCache.putAlbumPhotoPreview(getAlbumName(), photoName, decodedPhoto);
     }
+  }
+
+  private boolean updatePhotoBitmapIfExists(String photoName, Bitmap bitmap) {
+    if (photoName == null || bitmap == null) {
+      return false;
+    }
+    for (int rowIndex = 0; rowIndex < photos.size(); rowIndex++) {
+      PhotosItem row = photos.get(rowIndex);
+      if (photoName.equals(row.getFirstName())) {
+        row.setFirstPhotoIcon(bitmap);
+        adapter.notifyItemChanged(rowIndex);
+        return true;
+      }
+      if (photoName.equals(row.getSecondName())) {
+        row.setSecondPhotoIcon(bitmap);
+        adapter.notifyItemChanged(rowIndex);
+        return true;
+      }
+      if (photoName.equals(row.getThirdName())) {
+        row.setThirdPhotoIcon(bitmap);
+        adapter.notifyItemChanged(rowIndex);
+        return true;
+      }
+      if (photoName.equals(row.getFourtName())) {
+        row.setFourthPhotoIcon(bitmap);
+        adapter.notifyItemChanged(rowIndex);
+        return true;
+      }
+    }
+    return false;
   }
 
   @RequiresApi(api = Build.VERSION_CODES.O)
@@ -129,13 +183,49 @@ public class SecondActivity extends AppCompatActivity
         if (parts.length < 2) {
           continue;
         }
+        if (SessionDataCache.isPhotoPendingDeletion(getAlbumName(), parts[0])) {
+          continue;
+        }
         Bitmap decodedPreview = decodePreviewBitmap(parts[1]);
         if (decodedPreview != null) {
           previewBitmapsByName.put(parts[0], decodedPreview);
           appendPhotoToRows(parts[0], decodedPreview);
+          SessionDataCache.putAlbumPhotoPreview(getAlbumName(), parts[0], decodedPreview);
         }
       }
     }
+  }
+
+  private void restoreCachedPhotos(String albumName) {
+    java.util.LinkedHashMap<String, Bitmap> cachedPreviews =
+        SessionDataCache.getAlbumPreviewBitmaps(albumName);
+    if (cachedPreviews.isEmpty()) {
+      return;
+    }
+    for (Map.Entry<String, Bitmap> entry : cachedPreviews.entrySet()) {
+      String photoName = entry.getKey();
+      Bitmap preview = entry.getValue();
+      if (photoName == null || preview == null || previewBitmapsByName.containsKey(photoName)) {
+        continue;
+      }
+      if (SessionDataCache.isPhotoPendingDeletion(albumName, photoName)) {
+        continue;
+      }
+      previewBitmapsByName.put(photoName, preview);
+      appendPhotoToRows(photoName, preview);
+    }
+  }
+
+  private String buildPhotosDeltaRequestPayload(String albumName) {
+    List<String> knownPhotoNames = SessionDataCache.getAlbumPhotoNames(albumName);
+    if (knownPhotoNames.isEmpty()) {
+      return albumName;
+    }
+    StringBuilder payload = new StringBuilder(albumName).append("\nDELTA");
+    for (String photoName : knownPhotoNames) {
+      payload.append("\n").append(photoName);
+    }
+    return payload.toString();
   }
 
   private void appendPhotoToRows(String photoName, Bitmap decodedPhoto) {
@@ -202,6 +292,71 @@ public class SecondActivity extends AppCompatActivity
     return Math.max(1, inSampleSize);
   }
 
+  private Bitmap downscaleForUpload(Bitmap source, int maxDimension) {
+    if (source == null) {
+      return null;
+    }
+    int width = source.getWidth();
+    int height = source.getHeight();
+    if (width <= maxDimension && height <= maxDimension) {
+      return source;
+    }
+
+    float scale = Math.min((float) maxDimension / width, (float) maxDimension / height);
+    int outWidth = Math.max(1, Math.round(width * scale));
+    int outHeight = Math.max(1, Math.round(height * scale));
+    return Bitmap.createScaledBitmap(source, outWidth, outHeight, true);
+  }
+
+  private void sendUploadInChunks(String albumName, String fileName, String encodedImage) {
+    new Thread(
+            () -> {
+              if (albumName == null || fileName == null || encodedImage == null) {
+                return;
+              }
+              int chunkSize = 7000;
+              int totalParts = (encodedImage.length() + chunkSize - 1) / chunkSize;
+              if (totalParts <= 0) {
+                return;
+              }
+
+              String startPayload = albumName + "\n" + fileName + "\n" + totalParts;
+              String startMessage =
+                  MySocket.buildMessage(
+                      "UPLOAD_PHOTO_START", MessageCodes.getRequest(), startPayload);
+              if (MySocket.getOutput() == null) {
+                return;
+              }
+              MySocket.getOutput().write(startMessage);
+              MySocket.getOutput().flush();
+
+              for (int partIndex = 0; partIndex < totalParts; partIndex++) {
+                int start = partIndex * chunkSize;
+                int end = Math.min(encodedImage.length(), start + chunkSize);
+                String chunk = encodedImage.substring(start, end);
+                String chunkPayload =
+                    albumName
+                        + "\n"
+                        + fileName
+                        + "\n"
+                        + partIndex
+                        + "\n"
+                        + totalParts
+                        + "\n"
+                        + chunk;
+                String chunkMessage =
+                    MySocket.buildMessage(
+                        "UPLOAD_PHOTO_CHUNK", MessageCodes.getRequest(), chunkPayload);
+                if (MySocket.getOutput() == null) {
+                  return;
+                }
+                MySocket.getOutput().write(chunkMessage);
+                MySocket.getOutput().flush();
+              }
+            })
+        .start();
+  }
+
   public boolean onPrepareOptionsMenu(Menu menu) {
     this.optionsMenu = menu;
     if (first) {
@@ -223,16 +378,7 @@ public class SecondActivity extends AppCompatActivity
       case R.id.addPhotosMenuItem:
         Intent goGallery =
             new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-        MySocket.setClosed(true);
         startActivityForResult(goGallery, RESULT_LOAD_IMAGE);
-        return true;
-      case R.id.selectPhotosMenuItem:
-        selectionMode = !selectionMode;
-        if (!selectionMode) {
-          selectedPhotoNames.clear();
-        }
-        refreshSelectionUi();
-        adapter.notifyDataSetChanged();
         return true;
       case R.id.sharePhotosMenuItem:
         shareSelectedPhotos();
@@ -250,7 +396,12 @@ public class SecondActivity extends AppCompatActivity
     goPhotoViewer.putExtra("album_name", getAlbumName());
     goPhotoViewer.putExtra("albums", getAlbumsPayload());
     goPhotoViewer.putExtra("photo_name", photoName);
-    MySocket.setClosed(true);
+    Bitmap previewBitmap = previewBitmapsByName.get(photoName);
+    if (previewBitmap != null) {
+      ByteArrayOutputStream previewStream = new ByteArrayOutputStream();
+      previewBitmap.compress(Bitmap.CompressFormat.JPEG, 70, previewStream);
+      goPhotoViewer.putExtra("preview_bytes", previewStream.toByteArray());
+    }
     goPhotoViewer.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     startActivity(goPhotoViewer);
   }
@@ -264,6 +415,9 @@ public class SecondActivity extends AppCompatActivity
       selectedPhotoNames.remove(photoName);
     } else {
       selectedPhotoNames.add(photoName);
+    }
+    if (selectedPhotoNames.isEmpty()) {
+      selectionMode = false;
     }
     refreshSelectionUi();
     adapter.notifyDataSetChanged();
@@ -283,15 +437,8 @@ public class SecondActivity extends AppCompatActivity
     if (optionsMenu == null) {
       return;
     }
-    MenuItem selectItem = optionsMenu.findItem(R.id.selectPhotosMenuItem);
     MenuItem shareItem = optionsMenu.findItem(R.id.sharePhotosMenuItem);
     MenuItem deleteItem = optionsMenu.findItem(R.id.deletePhotosMenuItem);
-    if (selectItem != null) {
-      selectItem.setTitle(
-          selectionMode
-              ? getString(R.string.cancel_selection)
-              : getString(R.string.select));
-    }
     boolean hasSelection = !selectedPhotoNames.isEmpty();
     if (shareItem != null) {
       shareItem.setVisible(selectionMode);
@@ -304,7 +451,9 @@ public class SecondActivity extends AppCompatActivity
   }
 
   private String getAlbumName() {
-    return getIntent().hasExtra("album_name") ? getIntent().getExtras().getString("album_name") : "";
+    return getIntent().hasExtra("album_name")
+        ? getIntent().getExtras().getString("album_name")
+        : "";
   }
 
   private String getAlbumsPayload() {
@@ -313,7 +462,8 @@ public class SecondActivity extends AppCompatActivity
 
   private void shareSelectedPhotos() {
     if (selectedPhotoNames.isEmpty()) {
-      Toast.makeText(getApplicationContext(), getString(R.string.no_photos_selected), Toast.LENGTH_SHORT)
+      Toast.makeText(
+              getApplicationContext(), getString(R.string.no_photos_selected), Toast.LENGTH_SHORT)
           .show();
       return;
     }
@@ -331,7 +481,8 @@ public class SecondActivity extends AppCompatActivity
     }
 
     if (shareUris.isEmpty()) {
-      Toast.makeText(getApplicationContext(), getString(R.string.share_error), Toast.LENGTH_SHORT).show();
+      Toast.makeText(getApplicationContext(), getString(R.string.share_error), Toast.LENGTH_SHORT)
+          .show();
       return;
     }
 
@@ -373,7 +524,8 @@ public class SecondActivity extends AppCompatActivity
 
   private void deleteSelectedPhotos() {
     if (selectedPhotoNames.isEmpty()) {
-      Toast.makeText(getApplicationContext(), getString(R.string.no_photos_selected), Toast.LENGTH_SHORT)
+      Toast.makeText(
+              getApplicationContext(), getString(R.string.no_photos_selected), Toast.LENGTH_SHORT)
           .show();
       return;
     }
@@ -382,8 +534,137 @@ public class SecondActivity extends AppCompatActivity
       payload.append("\n").append(photoName);
     }
     pendingDeletePhotoNames = new LinkedHashSet<>(selectedPhotoNames);
-    new Thread(new SendMessagesThread("DEL_PHOTOS", MessageCodes.getRequest(), payload.toString()))
-        .start();
+    ArrayList<String> pendingDeleteNamesList = new ArrayList<>(pendingDeletePhotoNames);
+    SessionDataCache.markAlbumPhotosPendingDeletion(getAlbumName(), pendingDeleteNamesList);
+    SessionDataCache.removeAlbumPhotoPreviews(getAlbumName(), pendingDeleteNamesList);
+
+    removePhotosByName(new ArrayList<>(pendingDeletePhotoNames));
+    selectedPhotoNames.clear();
+    selectionMode = false;
+    refreshSelectionUi();
+
+    String payloadToSend = payload.toString();
+    pendingDeleteRunnable =
+        () ->
+            new Thread(
+                    new SendMessagesThread("DEL_PHOTOS", MessageCodes.getRequest(), payloadToSend))
+                .start();
+    deleteHandler.postDelayed(pendingDeleteRunnable, 300);
+
+    Snackbar.make(
+            photosSecondRecyclerView, getString(R.string.photos_deleted), Snackbar.LENGTH_LONG)
+        .setDuration(5000)
+        .setAction(
+            getString(R.string.redo),
+            v -> {
+              if (pendingDeleteRunnable != null) {
+                deleteHandler.removeCallbacks(pendingDeleteRunnable);
+                pendingDeleteRunnable = null;
+              }
+              SessionDataCache.clearAlbumPhotosPendingDeletion(
+                  getAlbumName(), new ArrayList<>(pendingDeletePhotoNames));
+              new Thread(
+                      new SendMessagesThread("PHOTOS", MessageCodes.getRequest(), getAlbumName()))
+                  .start();
+            })
+        .show();
+  }
+
+  private Bitmap createLoadingBitmap() {
+    Bitmap loadingBitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
+    loadingBitmap.eraseColor(0x44FFFFFF);
+    return loadingBitmap;
+  }
+
+  private void prepareLoadingPlaceholders(int count) {
+    photos.clear();
+    Bitmap loadingBitmap = createLoadingBitmap();
+    for (int i = 0; i < count; i++) {
+      appendPhotoToRows("__loading__" + i, loadingBitmap);
+    }
+  }
+
+  private int getRenderedPhotoCount() {
+    int count = 0;
+    for (PhotosItem row : photos) {
+      count += countSlot(row.getFirstName(), row.getFirstPhotoIcon());
+      count += countSlot(row.getSecondName(), row.getSecondPhotoIcon());
+      count += countSlot(row.getThirdName(), row.getThirdPhotoIcon());
+      count += countSlot(row.getFourtName(), row.getFourthPhotoIcon());
+    }
+    return count;
+  }
+
+  private int countSlot(String name, Bitmap bitmap) {
+    if (bitmap == null || name == null || name.equals("") || name.startsWith("__loading__")) {
+      return 0;
+    }
+    return 1;
+  }
+
+  private void appendLoadingPlaceholders(int count) {
+    if (count <= 0) {
+      return;
+    }
+    Bitmap loadingBitmap = createLoadingBitmap();
+    for (int i = 0; i < count; i++) {
+      appendPhotoToRows("__loading__pending__" + i + "_" + System.nanoTime(), loadingBitmap);
+    }
+  }
+
+  private void replacePlaceholderAtIndex(int index, String photoName, Bitmap bitmap) {
+    if (index < 0) {
+      return;
+    }
+
+    int rowIndex = index / 4;
+    int columnIndex = index % 4;
+    while (photos.size() <= rowIndex) {
+      photos.add(new PhotosItem("__loading__" + (photos.size() * 4), createLoadingBitmap()));
+    }
+
+    PhotosItem row = photos.get(rowIndex);
+    if (columnIndex == 0) {
+      row.setFirstName(photoName);
+      row.setFirstPhotoIcon(bitmap);
+    } else if (columnIndex == 1) {
+      row.setSecondName(photoName);
+      row.setSecondPhotoIcon(bitmap);
+    } else if (columnIndex == 2) {
+      row.setThirdName(photoName);
+      row.setThirdPhotoIcon(bitmap);
+    } else {
+      row.setFourtName(photoName);
+      row.setFourthPhotoIcon(bitmap);
+    }
+    adapter.notifyItemChanged(rowIndex);
+  }
+
+  private void clearPlaceholderAtIndex(int index) {
+    if (index < 0) {
+      return;
+    }
+    int rowIndex = index / 4;
+    int columnIndex = index % 4;
+    if (rowIndex < 0 || rowIndex >= photos.size()) {
+      return;
+    }
+
+    PhotosItem row = photos.get(rowIndex);
+    if (columnIndex == 0) {
+      row.setFirstName("");
+      row.setFirstPhotoIcon(null);
+    } else if (columnIndex == 1) {
+      row.setSecondName("");
+      row.setSecondPhotoIcon(null);
+    } else if (columnIndex == 2) {
+      row.setThirdName("");
+      row.setThirdPhotoIcon(null);
+    } else {
+      row.setFourtName("");
+      row.setFourthPhotoIcon(null);
+    }
+    adapter.notifyItemChanged(rowIndex);
   }
 
   private void removePhotosByName(List<String> photoNames) {
@@ -396,10 +677,16 @@ public class SecondActivity extends AppCompatActivity
     ArrayList<Bitmap> remainingBitmaps = new ArrayList<>();
 
     for (PhotosItem row : photos) {
-      addIfRemains(row.getFirstName(), row.getFirstPhotoIcon(), toDelete, remainingNames, remainingBitmaps);
       addIfRemains(
-          row.getSecondName(), row.getSecondPhotoIcon(), toDelete, remainingNames, remainingBitmaps);
-      addIfRemains(row.getThirdName(), row.getThirdPhotoIcon(), toDelete, remainingNames, remainingBitmaps);
+          row.getFirstName(), row.getFirstPhotoIcon(), toDelete, remainingNames, remainingBitmaps);
+      addIfRemains(
+          row.getSecondName(),
+          row.getSecondPhotoIcon(),
+          toDelete,
+          remainingNames,
+          remainingBitmaps);
+      addIfRemains(
+          row.getThirdName(), row.getThirdPhotoIcon(), toDelete, remainingNames, remainingBitmaps);
       addIfRemains(
           row.getFourtName(), row.getFourthPhotoIcon(), toDelete, remainingNames, remainingBitmaps);
     }
@@ -429,12 +716,7 @@ public class SecondActivity extends AppCompatActivity
           } else {
             rebuilt.add(
                 new PhotosItem(
-                    firstName,
-                    firstBitmap,
-                    secondName,
-                    secondBitmap,
-                    thirdName,
-                    thirdBitmap));
+                    firstName, firstBitmap, secondName, secondBitmap, thirdName, thirdBitmap));
           }
         } else {
           rebuilt.add(new PhotosItem(firstName, firstBitmap, secondName, secondBitmap));
@@ -470,9 +752,13 @@ public class SecondActivity extends AppCompatActivity
   @Override
   protected void onActivityResult(int requestCode, int resultCode, Intent data) {
     super.onActivityResult(requestCode, resultCode, data);
-    ReceiveMessagesThread.setActivity(this);
-    ReceiveMessagesThread.setListener(SecondActivity.this);
-    new Thread(new ReceiveMessagesThread()).start();
+    boolean wasClosed = MySocket.isClosed();
+    MySocket.setClosed(false);
+    if (wasClosed) {
+      ReceiveMessagesThread.setActivity(this);
+      ReceiveMessagesThread.setListener(SecondActivity.this);
+      new Thread(new ReceiveMessagesThread()).start();
+    }
     if (requestCode == RESULT_LOAD_IMAGE && resultCode == RESULT_OK && data != null) {
       android.net.Uri selectedImage = data.getData();
       if (selectedImage == null) {
@@ -505,37 +791,54 @@ public class SecondActivity extends AppCompatActivity
             .show();
         return;
       }
-      if (mimeType.equals("jpeg") || mimeType.equals("jpg")) {
-        imageToUpload.compress(Bitmap.CompressFormat.JPEG, 100, byteArrayOutputStream);
-      } else {
-        imageToUpload.compress(Bitmap.CompressFormat.PNG, 100, byteArrayOutputStream);
+
+      Bitmap resizedForUpload = downscaleForUpload(imageToUpload, 1280);
+      if (resizedForUpload == null) {
+        Toast.makeText(
+                getApplicationContext(), getString(R.string.upload_photo_error), Toast.LENGTH_SHORT)
+            .show();
+        return;
       }
+
+      Bitmap localPreview = downscaleForUpload(imageToUpload, PREVIEW_MAX_DIMENSION);
+      if (localPreview != null
+          && getIntent().hasExtra("album_name")
+          && !SessionDataCache.isPhotoPendingDeletion(getAlbumName(), nameOfFile)) {
+        String albumName = getIntent().getExtras().getString("album_name");
+        previewBitmapsByName.put(nameOfFile, localPreview);
+        if (!updatePhotoBitmapIfExists(nameOfFile, localPreview)) {
+          appendPhotoToRows(nameOfFile, localPreview);
+        }
+        SessionDataCache.putAlbumPhotoPreview(albumName, nameOfFile, localPreview);
+      }
+
+      // Always use JPEG for network transfer to keep payloads small and responsive on real server.
+      resizedForUpload.compress(Bitmap.CompressFormat.JPEG, 85, byteArrayOutputStream);
       String encodedImage =
           android.util.Base64.encodeToString(
               byteArrayOutputStream.toByteArray(), android.util.Base64.NO_WRAP);
 
       if (getIntent().hasExtra("album_name")) {
-        new Thread(
-                new SendMessagesThread(
-                    "UPLOAD_PHOTO",
-                    MessageCodes.getRequest(),
-                    getIntent().getExtras().getString("album_name")
-                        + "\n"
-                        + nameOfFile
-                        + "\n"
-                        + encodedImage))
-            .start();
+        sendUploadInChunks(
+            getIntent().getExtras().getString("album_name"), nameOfFile, encodedImage);
       }
     }
   }
 
   @Override
   public void onBackPressed() {
+    if (selectionMode) {
+      selectionMode = false;
+      selectedPhotoNames.clear();
+      refreshSelectionUi();
+      adapter.notifyDataSetChanged();
+      return;
+    }
+
     Intent goMain = new Intent(getApplicationContext(), MainActivity.class);
     if (getIntent().hasExtra("albums")) {
       goMain.putExtra("albums", getIntent().getExtras().getString("albums"));
     }
-    MySocket.setClosed(true);
     startActivity(goMain);
   }
 
@@ -581,6 +884,86 @@ public class SecondActivity extends AppCompatActivity
             .show();
       }
     }
+
+    if (message.getName().equals("PHOTOS_COUNT")) {
+      if (message.getType().equals(MessageCodes.getConfirm())) {
+        String[] lines = message.getData().split("\n");
+        if (lines.length >= 2) {
+          try {
+            expectedPreviewCount = Integer.parseInt(lines[1]);
+          } catch (NumberFormatException ignored) {
+            expectedPreviewCount = 0;
+          }
+          incomingPreviewChunksByIndex.clear();
+          incomingPreviewPartsByIndex.clear();
+          incomingPreviewPartCountByIndex.clear();
+          incomingPreviewNameByIndex.clear();
+          if (expectedPreviewCount > 0) {
+            if (photos.isEmpty()) {
+              previewPlaceholderOffset = 0;
+              prepareLoadingPlaceholders(expectedPreviewCount);
+            } else {
+              previewPlaceholderOffset = getRenderedPhotoCount();
+              appendLoadingPlaceholders(expectedPreviewCount);
+            }
+          } else {
+            previewPlaceholderOffset = getRenderedPhotoCount();
+          }
+        }
+      }
+    }
+
+    if (message.getName().equals("PHOTOS_CHUNK")) {
+      if (message.getType().equals(MessageCodes.getConfirm())) {
+        String[] chunkLines = message.getData().split("\n", 7);
+        if (chunkLines.length >= 7) {
+          try {
+            int photoIndex = Integer.parseInt(chunkLines[1]);
+            String photoName = chunkLines[3];
+            int partIndex = Integer.parseInt(chunkLines[4]);
+            int partTotal = Integer.parseInt(chunkLines[5]);
+            String chunkData = chunkLines[6];
+
+            if (!incomingPreviewChunksByIndex.containsKey(photoIndex)) {
+              incomingPreviewChunksByIndex.put(photoIndex, new StringBuilder());
+              incomingPreviewPartCountByIndex.put(photoIndex, 0);
+            }
+            incomingPreviewNameByIndex.put(photoIndex, photoName);
+            incomingPreviewPartsByIndex.put(photoIndex, partTotal);
+            incomingPreviewChunksByIndex.get(photoIndex).append(chunkData);
+            incomingPreviewPartCountByIndex.put(
+                photoIndex, incomingPreviewPartCountByIndex.get(photoIndex) + 1);
+
+            if (incomingPreviewPartCountByIndex.get(photoIndex) >= partTotal) {
+              Bitmap decodedPreview =
+                  decodePreviewBitmap(incomingPreviewChunksByIndex.get(photoIndex).toString());
+              if (decodedPreview != null) {
+                if (SessionDataCache.isPhotoPendingDeletion(getAlbumName(), photoName)) {
+                  clearPlaceholderAtIndex(previewPlaceholderOffset + photoIndex);
+                  incomingPreviewChunksByIndex.remove(photoIndex);
+                  incomingPreviewPartsByIndex.remove(photoIndex);
+                  incomingPreviewPartCountByIndex.remove(photoIndex);
+                  incomingPreviewNameByIndex.remove(photoIndex);
+                  return;
+                }
+                previewBitmapsByName.put(photoName, decodedPreview);
+                replacePlaceholderAtIndex(
+                    previewPlaceholderOffset + photoIndex, photoName, decodedPreview);
+                SessionDataCache.putAlbumPhotoPreview(getAlbumName(), photoName, decodedPreview);
+              } else {
+                clearPlaceholderAtIndex(previewPlaceholderOffset + photoIndex);
+              }
+              incomingPreviewChunksByIndex.remove(photoIndex);
+              incomingPreviewPartsByIndex.remove(photoIndex);
+              incomingPreviewPartCountByIndex.remove(photoIndex);
+              incomingPreviewNameByIndex.remove(photoIndex);
+            }
+          } catch (NumberFormatException ignored) {
+          }
+        }
+      }
+    }
+
     if (message.getName().equals("UPLOAD_PHOTO")) {
       if (message.getType().equals(MessageCodes.getConfirm())) {
         addPhoto(message.getData());
@@ -594,16 +977,27 @@ public class SecondActivity extends AppCompatActivity
     }
     if (message.getName().equals("DEL_PHOTOS")) {
       if (message.getType().equals(MessageCodes.getConfirm())) {
-        removePhotosByName(new ArrayList<>(pendingDeletePhotoNames));
-        selectedPhotoNames.clear();
+        SessionDataCache.clearAlbumPhotosPendingDeletion(
+            getAlbumName(), new ArrayList<>(pendingDeletePhotoNames));
+        SessionDataCache.removeAlbumPhotoPreviews(
+            getAlbumName(), new ArrayList<>(pendingDeletePhotoNames));
         pendingDeletePhotoNames.clear();
-        selectionMode = false;
-        refreshSelectionUi();
-        Toast.makeText(getApplicationContext(), getString(R.string.photos_deleted), Toast.LENGTH_SHORT)
+        pendingDeleteRunnable = null;
+        Toast.makeText(
+                getApplicationContext(), getString(R.string.photos_deleted), Toast.LENGTH_SHORT)
             .show();
       } else if (message.getType().equals(MessageCodes.getDelPhotosError())) {
+        if (pendingDeleteRunnable != null) {
+          deleteHandler.removeCallbacks(pendingDeleteRunnable);
+          pendingDeleteRunnable = null;
+        }
+        SessionDataCache.clearAlbumPhotosPendingDeletion(
+            getAlbumName(), new ArrayList<>(pendingDeletePhotoNames));
+        new Thread(new SendMessagesThread("PHOTOS", MessageCodes.getRequest(), getAlbumName()))
+            .start();
         pendingDeletePhotoNames.clear();
-        Toast.makeText(getApplicationContext(), getString(R.string.delete_photo_error), Toast.LENGTH_SHORT)
+        Toast.makeText(
+                getApplicationContext(), getString(R.string.delete_photo_error), Toast.LENGTH_SHORT)
             .show();
       }
     }

@@ -5,6 +5,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
@@ -56,6 +57,10 @@ class PhotosAdapter extends RecyclerView.Adapter<PhotosAdapter.PhotosViewHolder>
     public ImageButton secondPhotoImageButton;
     public ImageButton thirdPhotoImageButton;
     public ImageButton fourthPhotoImageButton;
+    public ImageView firstPhotoSelectedIndicator;
+    public ImageView secondPhotoSelectedIndicator;
+    public ImageView thirdPhotoSelectedIndicator;
+    public ImageView fourthPhotoSelectedIndicator;
 
     public PhotosViewHolder(@NonNull View itemView) {
       super(itemView);
@@ -63,6 +68,10 @@ class PhotosAdapter extends RecyclerView.Adapter<PhotosAdapter.PhotosViewHolder>
       this.secondPhotoImageButton = itemView.findViewById(R.id.secondPhotoImageButton);
       this.thirdPhotoImageButton = itemView.findViewById(R.id.thirdPhotoImageButton);
       this.fourthPhotoImageButton = itemView.findViewById(R.id.fourthPhotoImageButton);
+      this.firstPhotoSelectedIndicator = itemView.findViewById(R.id.firstPhotoSelectedIndicator);
+      this.secondPhotoSelectedIndicator = itemView.findViewById(R.id.secondPhotoSelectedIndicator);
+      this.thirdPhotoSelectedIndicator = itemView.findViewById(R.id.thirdPhotoSelectedIndicator);
+      this.fourthPhotoSelectedIndicator = itemView.findViewById(R.id.fourthPhotoSelectedIndicator);
     }
   }
 
@@ -77,27 +86,53 @@ class PhotosAdapter extends RecyclerView.Adapter<PhotosAdapter.PhotosViewHolder>
   @Override
   public void onBindViewHolder(@NonNull PhotosViewHolder holder, int position) {
     PhotosItem currentItem = photos.get(position);
-    bindPhotoButton(holder.firstPhotoImageButton, currentItem.getFirstName(), currentItem.getFirstPhotoIcon());
     bindPhotoButton(
-        holder.secondPhotoImageButton, currentItem.getSecondName(), currentItem.getSecondPhotoIcon());
-    bindPhotoButton(holder.thirdPhotoImageButton, currentItem.getThirdName(), currentItem.getThirdPhotoIcon());
+        holder.firstPhotoImageButton,
+        holder.firstPhotoSelectedIndicator,
+        currentItem.getFirstName(),
+        currentItem.getFirstPhotoIcon());
     bindPhotoButton(
-        holder.fourthPhotoImageButton, currentItem.getFourtName(), currentItem.getFourthPhotoIcon());
+        holder.secondPhotoImageButton,
+        holder.secondPhotoSelectedIndicator,
+        currentItem.getSecondName(),
+        currentItem.getSecondPhotoIcon());
+    bindPhotoButton(
+        holder.thirdPhotoImageButton,
+        holder.thirdPhotoSelectedIndicator,
+        currentItem.getThirdName(),
+        currentItem.getThirdPhotoIcon());
+    bindPhotoButton(
+        holder.fourthPhotoImageButton,
+        holder.fourthPhotoSelectedIndicator,
+        currentItem.getFourtName(),
+        currentItem.getFourthPhotoIcon());
   }
 
-  private void bindPhotoButton(ImageButton button, String photoName, android.graphics.Bitmap bitmap) {
+  private void bindPhotoButton(
+      ImageButton button, ImageView indicator, String photoName, android.graphics.Bitmap bitmap) {
     if (bitmap == null || photoName == null || photoName.equals("")) {
       button.setImageDrawable(null);
       button.setVisibility(View.INVISIBLE);
       button.setOnClickListener(null);
       button.setOnLongClickListener(null);
+      indicator.setVisibility(View.GONE);
       return;
     }
 
+    boolean isLoadingPlaceholder = photoName.startsWith("__loading__");
+
     button.setVisibility(View.VISIBLE);
     button.setImageBitmap(bitmap);
-    boolean selected = interactionListener != null && interactionListener.isPhotoSelected(photoName);
-    button.setAlpha(selected ? 0.55f : 1.0f);
+    boolean selected =
+        interactionListener != null && interactionListener.isPhotoSelected(photoName);
+    button.setAlpha(selected ? 0.55f : (isLoadingPlaceholder ? 0.35f : 1.0f));
+    indicator.setVisibility(selected ? View.VISIBLE : View.GONE);
+
+    if (isLoadingPlaceholder) {
+      button.setOnClickListener(null);
+      button.setOnLongClickListener(null);
+      return;
+    }
 
     button.setOnClickListener(
         v -> {

@@ -1,6 +1,31 @@
 import unittest
+import socket
 
 import pcloud_protocol
+
+
+class _TimeoutThenDataSocket:
+    def __init__(self, events):
+        self._events = list(events)
+        self._buffer = b""
+
+    def recv(self, size):
+        if not self._buffer:
+            if not self._events:
+                return b""
+            event = self._events.pop(0)
+            if event is socket.timeout:
+                raise socket.timeout()
+            self._buffer = event
+
+        chunk = self._buffer[:size]
+        self._buffer = self._buffer[size:]
+        return chunk
+
+
+class _AlwaysTimeoutSocket:
+    def recv(self, _size):
+        raise socket.timeout()
 
 
 class ProtocolTests(unittest.TestCase):
@@ -26,6 +51,20 @@ class ProtocolTests(unittest.TestCase):
             payload,
             pcloud_protocol.get_data_from_message(message),
         )
+
+    def test_recv_by_protocol_handles_intermediate_timeouts(self):
+        message = pcloud_protocol.build_message("PING", "0", "hello")
+        encoded = message.encode("utf-8")
+        events = [encoded[:5], socket.timeout, encoded[5:12], socket.timeout, encoded[12:]]
+        sock = _TimeoutThenDataSocket(events)
+
+        received = pcloud_protocol.recv_by_protocol(sock, deadline_seconds=1.0)
+        self.assertEqual(message, received)
+
+    def test_recv_by_protocol_respects_deadline(self):
+        sock = _AlwaysTimeoutSocket()
+        with self.assertRaises(socket.timeout):
+            pcloud_protocol.recv_by_protocol(sock, deadline_seconds=0.2)
 
 
 if __name__ == "__main__":

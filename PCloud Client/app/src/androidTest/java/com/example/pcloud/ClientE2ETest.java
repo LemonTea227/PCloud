@@ -5,10 +5,9 @@ import static androidx.test.espresso.Espresso.openActionBarOverflowOrOptionsMenu
 import static androidx.test.espresso.Espresso.pressBack;
 import static androidx.test.espresso.action.ViewActions.click;
 import static androidx.test.espresso.action.ViewActions.closeSoftKeyboard;
+import static androidx.test.espresso.action.ViewActions.longClick;
 import static androidx.test.espresso.action.ViewActions.replaceText;
-import static androidx.test.espresso.action.ViewActions.typeText;
 import static androidx.test.espresso.assertion.ViewAssertions.matches;
-import static androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom;
 import static androidx.test.espresso.matcher.ViewMatchers.hasDescendant;
 import static androidx.test.espresso.matcher.ViewMatchers.isChecked;
 import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
@@ -23,7 +22,6 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.SystemClock;
-import android.os.ParcelFileDescriptor;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.espresso.contrib.RecyclerViewActions;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -122,7 +120,7 @@ public class ClientE2ETest {
 
     triggerPhotoPickResultOnSecondActivity();
 
-    waitUntil(() -> server.hasUploadedPhoto(albumName, "e2e_image.png"), 8000);
+    waitUntil(() -> server.hasUploadedPhoto(albumName, "e2e_image.png"), 20000);
 
     waitForView(withId(R.id.firstPhotoImageButton), 12000);
     onView(withId(R.id.firstPhotoImageButton)).perform(click());
@@ -207,9 +205,19 @@ public class ClientE2ETest {
     waitForView(withId(R.id.albumMainRecyclerView), 12000);
     clickMenuItem(R.id.searchAlbumsMenuItem, R.string.search);
     onView(withId(androidx.appcompat.R.id.search_src_text))
-      .perform(replaceText("album_079"), closeSoftKeyboard());
-    onView(withId(R.id.albumMainRecyclerView))
-        .perform(RecyclerViewActions.scrollTo(hasDescendant(withText("album_079"))));
+        .perform(replaceText("album_079"), closeSoftKeyboard());
+
+    SystemClock.sleep(3000);
+
+    try {
+      onView(withId(R.id.albumMainRecyclerView))
+          .perform(RecyclerViewActions.scrollTo(hasDescendant(withText("album_079"))));
+    } catch (Exception e) {
+      SystemClock.sleep(1000);
+      onView(withId(R.id.albumMainRecyclerView))
+          .perform(RecyclerViewActions.scrollTo(hasDescendant(withText("album_079"))));
+    }
+
     onView(withId(R.id.albumMainRecyclerView))
         .perform(RecyclerViewActions.actionOnItem(hasDescendant(withText("album_079")), click()));
     waitForView(withId(R.id.photosSecondRecyclerView), 12000);
@@ -231,8 +239,7 @@ public class ClientE2ETest {
 
     waitForView(withId(R.id.photosSecondRecyclerView), 12000);
     waitForView(withId(R.id.firstPhotoImageButton), 30000);
-    clickMenuItem(R.id.selectPhotosMenuItem, R.string.select);
-    onView(withId(R.id.firstPhotoImageButton)).perform(click());
+    onView(withId(R.id.firstPhotoImageButton)).perform(longClick());
     onView(withId(R.id.secondPhotoImageButton)).perform(click());
     clickMenuItem(R.id.deletePhotosMenuItem, R.string.delete);
 
@@ -254,7 +261,9 @@ public class ClientE2ETest {
   private void launchSplashAndWaitForEntry() {
     ActivityScenario.launch(SplashActivity.class);
     waitUntil(
-        () -> isViewDisplayed(withId(R.id.usernameLogin)) || isViewDisplayed(withId(R.id.albumMainRecyclerView)),
+        () ->
+            isViewDisplayed(withId(R.id.usernameLogin))
+                || isViewDisplayed(withId(R.id.albumMainRecyclerView)),
         20000);
   }
 

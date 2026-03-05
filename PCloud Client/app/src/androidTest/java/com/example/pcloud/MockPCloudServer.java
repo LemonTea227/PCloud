@@ -28,6 +28,7 @@ class MockPCloudServer {
   private final Map<String, String> users = new ConcurrentHashMap<>();
   private final Map<String, LinkedHashMap<String, String>> albums = new ConcurrentHashMap<>();
   private final List<String> uploadedPhotoNames = Collections.synchronizedList(new ArrayList<>());
+  private final Map<String, UploadChunkState> uploadChunks = new ConcurrentHashMap<>();
 
   void seedUser(String username, String password) {
     users.put(username, password);
@@ -184,8 +185,22 @@ class MockPCloudServer {
       return new ProtocolMessage("LOGIN", "200", "");
     }
     if ("ALBUMS".equals(name)) {
+      java.util.LinkedHashSet<String> knownAlbums = new java.util.LinkedHashSet<>();
+      if (request.data != null && !request.data.isEmpty()) {
+        String[] lines = request.data.split("\\n");
+        if (lines.length > 0 && "DELTA".equalsIgnoreCase(lines[0])) {
+          for (int i = 1; i < lines.length; i++) {
+            if (!lines[i].trim().isEmpty()) {
+              knownAlbums.add(lines[i].trim());
+            }
+          }
+        }
+      }
       StringBuilder builder = new StringBuilder();
       for (String album : albums.keySet()) {
+        if (knownAlbums.contains(album)) {
+          continue;
+        }
         if (builder.length() > 0) {
           builder.append("\n");
         }
@@ -201,12 +216,33 @@ class MockPCloudServer {
       return new ProtocolMessage("NEW_ALBUM", "203", "");
     }
     if ("PHOTOS".equals(name)) {
-      LinkedHashMap<String, String> photos = albums.get(request.data);
+      String[] payloadLines = request.data == null ? new String[0] : request.data.split("\\n");
+      if (payloadLines.length == 0) {
+        return new ProtocolMessage("PHOTOS", "205", "");
+      }
+      String albumName = payloadLines[0];
+      java.util.LinkedHashSet<String> knownPhotos = new java.util.LinkedHashSet<>();
+      if (payloadLines.length > 1) {
+        int start = 1;
+        if ("DELTA".equalsIgnoreCase(payloadLines[1])) {
+          start = 2;
+        }
+        for (int i = start; i < payloadLines.length; i++) {
+          if (!payloadLines[i].trim().isEmpty()) {
+            knownPhotos.add(payloadLines[i].trim());
+          }
+        }
+      }
+
+      LinkedHashMap<String, String> photos = albums.get(albumName);
       if (photos == null) {
         return new ProtocolMessage("PHOTOS", "205", "");
       }
-      StringBuilder body = new StringBuilder(request.data);
+      StringBuilder body = new StringBuilder(albumName);
       for (Map.Entry<String, String> entry : photos.entrySet()) {
+        if (knownPhotos.contains(entry.getKey())) {
+          continue;
+        }
         body.append("\n").append(entry.getKey()).append("~").append(entry.getValue());
       }
       return new ProtocolMessage("PHOTOS", "1", body.toString());
@@ -219,6 +255,59 @@ class MockPCloudServer {
         return new ProtocolMessage("UPLOAD_PHOTO", "1", parts[1] + "~" + parts[2]);
       }
       return new ProtocolMessage("UPLOAD_PHOTO", "206", "");
+    }
+    if ("UPLOAD_PHOTO_START".equals(name)) {
+      String[] parts = request.data.split("\\n", 3);
+      if (parts.length == 3 && albums.containsKey(parts[0])) {
+        int totalParts;
+        try {
+          totalParts = Integer.parseInt(parts[2]);
+        } catch (NumberFormatException ignored) {
+          return new ProtocolMessage("UPLOAD_PHOTO", "206", "");
+        }
+        if (totalParts <= 0) {
+          return new ProtocolMessage("UPLOAD_PHOTO", "206", "");
+        }
+        String key = parts[0] + "\n" + parts[1];
+        uploadChunks.put(key, new UploadChunkState(parts[0], parts[1], totalParts));
+        return null;
+      }
+      return new ProtocolMessage("UPLOAD_PHOTO", "206", "");
+    }
+    if ("UPLOAD_PHOTO_CHUNK".equals(name)) {
+      String[] parts = request.data.split("\\n", 5);
+      if (parts.length < 5 || !albums.containsKey(parts[0])) {
+        return new ProtocolMessage("UPLOAD_PHOTO", "206", "");
+      }
+      String albumName = parts[0];
+      String fileName = parts[1];
+      int partIndex;
+      int partTotal;
+      try {
+        partIndex = Integer.parseInt(parts[2]);
+        partTotal = Integer.parseInt(parts[3]);
+      } catch (NumberFormatException ignored) {
+        return new ProtocolMessage("UPLOAD_PHOTO", "206", "");
+      }
+      String key = albumName + "\n" + fileName;
+      UploadChunkState state = uploadChunks.get(key);
+      if (state == null || state.totalParts != partTotal) {
+        if (partTotal <= 0) {
+          return new ProtocolMessage("UPLOAD_PHOTO", "206", "");
+        }
+        state = new UploadChunkState(albumName, fileName, partTotal);
+        uploadChunks.put(key, state);
+      }
+
+      String completedPayload = state.addChunk(partIndex, parts[4]);
+      if (completedPayload == null) {
+        return null;
+      }
+
+      uploadChunks.remove(key);
+      albums.get(albumName).put(fileName, completedPayload);
+      uploadedPhotoNames.add(fileName);
+      return new ProtocolMessage("UPLOAD_PHOTO", "1", fileName + "~" + completedPayload);
     }
     if ("PHOTO".equals(name)) {
       String[] parts = request.data.split("\\n", 2);
@@ -340,6 +429,46 @@ class MockPCloudServer {
       this.name = name;
       this.type = type;
       this.data = data == null ? "" : data;
+    }
+  }
+
+  private static final class UploadChunkState {
+    final String albumName;
+    final String fileName;
+    final int totalParts;
+    final String[] chunks;
+    int receivedParts;
+
+    UploadChunkState(String albumName, String fileName, int totalParts) {
+      this.albumName = albumName;
+      this.fileName = fileName;
+      this.totalParts = totalParts;
+      this.chunks = new String[totalParts];
+      this.receivedParts = 0;
+    }
+
+    synchronized String addChunk(int partIndex, String chunk) {
+      if (partIndex < 0 || partIndex >= totalParts) {
+        return null;
+      }
+      if (chunks[partIndex] == null) {
+        chunks[partIndex] = chunk == null ? "" : chunk;
+        receivedParts++;
+      } else {
+        chunks[partIndex] = chunk == null ? "" : chunk;
+      }
+
+      if (receivedParts < totalParts) {
+        return null;
+      }
+
+      StringBuilder builder = new StringBuilder();
+      for (int i = 0; i < totalParts; i++) {
+        if (chunks[i] != null) {
+          builder.append(chunks[i]);
+        }
+      }
+      return builder.toString();
     }
   }
 }

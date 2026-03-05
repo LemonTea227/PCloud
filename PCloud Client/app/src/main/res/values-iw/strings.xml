@@ -49,4 +49,18 @@
     <string name="photos_deleted">התמונות נמחקו</string>
     <string name="delete_photo_error">לא ניתן למחוק את התמונות שנבחרו</string>
     <string name="share_error">לא ניתן לשתף את התמונות שנבחרו</string>
+    <string name="delete_album_error">לא ניתן למחוק את האלבומים שנבחרו</string>
+    <string name="albums_deleted">האלבומים נמחקו</string>
+    <string name="delete_album_confirm_title">מחיקת אלבום</string>
+    <string name="delete_albums_confirm_title">מחיקת אלבומים</string>
+    <string name="delete_album_confirm_message">האלבום אינו ריק. למחוק אותו?</string>
+    <string name="delete_albums_confirm_message">למחוק את האלבומים שנבחרו?</string>
+    <string name="confirm">אישור</string>
+    <string name="cancel">ביטול</string>
+    <string name="undo">בטל</string>
+    <string name="redo">שחזר</string>
+    <string name="loading_photo">טוען תמונה</string>
+    <string name="download_original">הורד מקור</string>
+    <string name="downloading_photo">מוריד תמונה מקורית…</string>
+    <string name="download_complete">התמונה המקורית נטענה</string>
 </resources>

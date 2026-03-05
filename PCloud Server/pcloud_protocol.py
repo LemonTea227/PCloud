@@ -1,5 +1,6 @@
 from __future__ import print_function
 import sys
+import socket
 
 PY2 = sys.version_info[0] == 2
 try:
@@ -98,32 +99,59 @@ def send_by_protocol(sock, message, aes_key=None):
             f.write("\nSent(%s)>>>%s" % (len(message), message))
 
 
-def recv_by_protocol(sock, aes_key=None):
+def recv_by_protocol(sock, aes_key=None, deadline_seconds=10.0, max_header_bytes=8192):
+    import time
+
+    timeout_window = max(0.1, float(deadline_seconds))
+    deadline = time.time() + timeout_window
     str_headers = ""
     data_len = 0
     while True:
-        received = sock.recv(1)
+        if len(str_headers) > max_header_bytes:
+            return ""
+        if time.time() >= deadline:
+            raise socket.timeout()
+        try:
+            received = sock.recv(1)
+        except socket.timeout:
+            continue
         if received in ("", b""):
             str_headers = ""
             break
         received = _to_text(received)
         str_headers += received
+        deadline = time.time() + timeout_window
         if len(str_headers) >= 2:
             if str_headers[-2:] == "\n\n":
                 break
     data = ""
     data_size = ""
     if str_headers != "":
-        data_size = get_header_from_message(str_headers, "size")
+        try:
+            data_size = get_header_from_message(str_headers, "size")
+        except Exception:
+            return ""
         if data_size != "":
-            data_len = int(data_size) + 5
+            try:
+                data_len = int(data_size) + 5
+            except Exception:
+                return ""
             while len(data) < data_len:
-                received = sock.recv(data_len - len(data))
+                if time.time() >= deadline:
+                    raise socket.timeout()
+                try:
+                    received = sock.recv(data_len - len(data))
+                except socket.timeout:
+                    continue
                 if received in ("", b""):
                     data = ""
                     break
                 received = _to_text(received)
                 data += received
+                deadline = time.time() + timeout_window
+
+    if data_len != len(data):
+        data = ""  # Partial data is like no data !
 
     if aes_key and data.startswith("data:"):
         encrypted_data = data[5:]
@@ -140,9 +168,6 @@ def recv_by_protocol(sock, aes_key=None):
     if MAKE_LOG:
         with open(LOG_FILE, "a") as f:
             f.write("\nRecv(%s)>>>%s" % (len(message), message))
-
-    if data_len != len(data):
-        data = ""  # Partial data is like no data !
 
     return str_headers + data
 

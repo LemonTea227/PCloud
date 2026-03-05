@@ -115,7 +115,6 @@ public class LoginActivity extends AppCompatActivity implements ReceiveMessagesL
         v -> {
           Intent goRegister = new Intent(getApplicationContext(), RegisterActivity.class);
           goRegister.putExtra("username", usernameLogin.getText().toString());
-          MySocket.setClosed(true);
           startActivity(goRegister);
         });
   }
@@ -163,7 +162,6 @@ public class LoginActivity extends AppCompatActivity implements ReceiveMessagesL
             .show();
         Intent goMain = new Intent(getApplicationContext(), MainActivity.class);
         goMain.putExtra("albums", message.getData());
-        MySocket.setClosed(true);
         startActivity(goMain);
       } else if (message.getType().equals(MessageCodes.getAlbumsError())) {
         Toast.makeText(

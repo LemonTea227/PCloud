@@ -1,7 +1,6 @@
 package com.example.pcloud;
 
 import android.content.Context;
-import android.content.Intent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -13,23 +12,41 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
 
 public class AlbumAdapter extends RecyclerView.Adapter<AlbumAdapter.AlbumViewHolder> {
+  interface AlbumInteractionListener {
+    void onOpenAlbum(String albumName);
+
+    void onToggleAlbumSelection(String albumName);
+
+    boolean isSelectionModeEnabled();
+
+    boolean isAlbumSelected(String albumName);
+  }
+
   private ArrayList<AlbumItem> albums;
   Context context;
+  private AlbumInteractionListener interactionListener;
 
   public AlbumAdapter(Context context, ArrayList<AlbumItem> albums) {
     this.context = context;
     this.albums = albums;
   }
 
+  public AlbumAdapter(
+      Context context, ArrayList<AlbumItem> albums, AlbumInteractionListener interactionListener) {
+    this(context, albums);
+    this.interactionListener = interactionListener;
+  }
+
   public class AlbumViewHolder extends RecyclerView.ViewHolder {
     ImageView albumImageView;
+    ImageView albumSelectedCheckImageView;
     TextView albumTextView;
     ConstraintLayout albumLayout;
-    ;
 
     public AlbumViewHolder(@NonNull View itemView) {
       super(itemView);
       albumImageView = itemView.findViewById(R.id.albumAlbumLayoutImageView);
+      albumSelectedCheckImageView = itemView.findViewById(R.id.albumSelectedCheckImageView);
       albumTextView = itemView.findViewById(R.id.albumNameAlbumLayoutTextView);
       albumLayout = itemView.findViewById(R.id.albumLayout);
     }
@@ -49,21 +66,34 @@ public class AlbumAdapter extends RecyclerView.Adapter<AlbumAdapter.AlbumViewHol
     holder.albumImageView.setImageResource(R.drawable.album_default);
     holder.albumTextView.setText(currentItem.getAlbumName());
 
+    boolean selected =
+        interactionListener != null
+            && interactionListener.isAlbumSelected(currentItem.getAlbumName());
+    holder.albumSelectedCheckImageView.setVisibility(selected ? View.VISIBLE : View.GONE);
+    holder.albumLayout.setAlpha(selected ? 0.65f : 1.0f);
+
     holder.albumLayout.setOnClickListener(
         new View.OnClickListener() {
           @Override
           public void onClick(View v) {
-            Intent goSecond = new Intent(context, SecondActivity.class);
-            goSecond.putExtra("album_name", currentItem.getAlbumName());
-            String albumsString = "";
-            for (int i = 0; i < albums.size(); i++) {
-              albumsString += albums.get(i).getAlbumName() + "\n";
+            if (interactionListener == null) {
+              return;
             }
-            goSecond.putExtra("albums", albumsString);
-            MySocket.setClosed(true);
-            goSecond.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(goSecond);
+            if (interactionListener.isSelectionModeEnabled()) {
+              interactionListener.onToggleAlbumSelection(currentItem.getAlbumName());
+            } else {
+              interactionListener.onOpenAlbum(currentItem.getAlbumName());
+            }
           }
+        });
+
+    holder.albumLayout.setOnLongClickListener(
+        v -> {
+          if (interactionListener != null) {
+            interactionListener.onToggleAlbumSelection(currentItem.getAlbumName());
+            return true;
+          }
+          return false;
         });
   }
 

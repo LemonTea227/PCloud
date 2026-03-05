@@ -21,7 +21,7 @@ def _to_16_byte_key(num):
     return "".join(key_bytes)
 
 
-def diffie_hellman_server(sock):
+def diffie_hellman_server(sock, timeout_seconds=10.0):
     """
     applying diffie hellman protocol on the server to create an AES 16 bytes key
     :param sock: the socket :type socket._socketobject
@@ -35,11 +35,11 @@ def diffie_hellman_server(sock):
     my_num = randint(1, 20302)
 
     score = str((G**my_num) % P)
-    deadline = time.time() + 10.0
+    deadline = time.time() + float(timeout_seconds)
     mes = ""
     while not mes and time.time() < deadline:
         try:
-            mes = recv_by_protocol(sock)
+            mes = recv_by_protocol(sock, deadline_seconds=max(1.0, float(timeout_seconds)))
         except socket.timeout:
             continue
     if mes == "":
@@ -65,7 +65,7 @@ def diffie_hellman_client(sock):
     my_num = randint(1, 20303)
 
     score = str((G**my_num) % P)
-    send_by_protocol(sock, build_message("SCORE", CONFIRM, data=score))
+    send_by_protocol(sock, build_message("SCORE", CONFIRM, score))
 
     mes = recv_by_protocol(sock)
     other_score = int(get_data_from_message(mes))
