@@ -321,10 +321,10 @@ def get_albums_names(sock):
     :return: list of album names of the user
     """
     lst_names = []
-    for album in USERS[sock].get_albums_by_creator(USERS[sock].user_id):
-        album_name = str(album[2]).strip() if len(album) > 2 and album[2] is not None else ""
-        if album_name != "":
-            lst_names.append(album_name)
+    for album_name in USERS[sock].get_album_names_by_creator(USERS[sock].user_id):
+        name = str(album_name).strip() if album_name is not None else ""
+        if name != "":
+            lst_names.append(name)
     return lst_names
 
 
@@ -335,8 +335,12 @@ def get_photos_names(sock, album_name):
     :return: list of album names of the user
     """
     lst_names = []
-    for photo in USERS[sock].get_photos_in_album(album_name):
-        lst_names.append(photo[3])
+    for photo_name in USERS[sock].get_photo_names_in_album(album_name):
+        if photo_name is None:
+            continue
+        name = str(photo_name).strip()
+        if name != "":
+            lst_names.append(name)
     return lst_names
 
 
@@ -518,8 +522,10 @@ def backfill_photo_data_from_disk(sock, album_name, file_name, current_file_data
 
 
 def build_preview_bytes(source_bytes):
-    if source_bytes is None or Image is None:
+    if source_bytes is None:
         return None
+    if Image is None:
+        return source_bytes
     try:
         with Image.open(io.BytesIO(source_bytes)) as img:
             if img.mode not in ("RGB", "L"):
@@ -990,7 +996,14 @@ def receive_handler(sock, recv, aes_key=None):
                     )
                     return
 
-                album_name = payload_lines[0]
+                album_name = payload_lines[0].strip()
+                if album_name == "":
+                    SEND[sock].append(
+                        build_message(
+                            get_header_from_message(recv, "name"), PHOTOS_ERROR, aes_key=aes_key
+                        )
+                    )
+                    return
                 known_photos = set()
                 if len(payload_lines) > 1:
                     if payload_lines[1].strip().upper() == "DELTA":

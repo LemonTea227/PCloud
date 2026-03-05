@@ -236,7 +236,6 @@ class UserAlbumPhotoORM(object):
                 else:
                     data_lst.append(data[0][i])
 
-        print(data_lst)
         return data_lst
 
     def get_all_rows_DB(self, db_name, lst_args, lst_values):
@@ -278,8 +277,45 @@ class UserAlbumPhotoORM(object):
                     row_list.append(data[j][i])
             data_lst.append(row_list)
 
-        print(data_lst)
         return data_lst
+
+    def get_column_values_DB(self, db_name, select_column, lst_args, lst_values):
+        """
+        this function is responsible for getting one column values from all rows in db that match the terms
+        :param db_name:
+        :param select_column:
+        :param lst_args:
+        :param lst_values:
+        :return:
+        """
+        self.open_DB()
+
+        to_execute = "SELECT " + select_column + " FROM " + db_name
+        to_execute += " WHERE "
+        to_execute += '{0} = "{1}"'.format(lst_args[0], lst_values[0])
+
+        for i in xrange(len(lst_args[1:])):
+            to_execute += " AND "
+            to_execute += '{0} = "{1}"'.format(lst_args[i + 1], lst_values[i + 1])
+
+        self.current.execute(to_execute)
+        self.commit()
+
+        data = self.current.fetchall()
+        self.commit()
+
+        self.close_DB()
+
+        values = []
+        for row in data:
+            if not row:
+                continue
+            value = row[0]
+            if type(value) != type(1):
+                values.append(str(value))
+            else:
+                values.append(value)
+        return values
 
     def create_photos_DB(self):
         """
@@ -556,11 +592,20 @@ class User(object):
     def get_albums_by_creator(self, creator_id):
         return self.db.get_all_rows_DB("albums", ["creator_id"], [creator_id])
 
+    def get_album_names_by_creator(self, creator_id):
+        return self.db.get_column_values_DB("albums", "album_name", ["creator_id"], [creator_id])
+
     def get_photos_in_album(self, album_name):
         album_id = self.get_album_id_by_album_name(album_name)
         if album_id is None:
             return []
         return self.db.get_all_rows_DB("photos", ["album_id"], [album_id])
+
+    def get_photo_names_in_album(self, album_name):
+        album_id = self.get_album_id_by_album_name(album_name)
+        if album_id is None:
+            return []
+        return self.db.get_column_values_DB("photos", "file_name", ["album_id"], [album_id])
 
     def get_photos_data_in_album(self, album_name):
         album_id = self.get_album_id_by_album_name(album_name)
