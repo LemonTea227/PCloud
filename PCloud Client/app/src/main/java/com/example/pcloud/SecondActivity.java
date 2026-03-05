@@ -115,7 +115,10 @@ public class SecondActivity extends AppCompatActivity
 
     String albumName = getAlbumName();
     if (!albumName.equals("")) {
-      restoreCachedPhotos(albumName);
+      SessionDataCache.clearAlbumPreviewCache(albumName);
+      previewBitmapsByName.clear();
+      photos.clear();
+      adapter.notifyDataSetChanged();
       new Thread(
               new SendMessagesThread(
                   "PHOTOS", MessageCodes.getRequest(), buildPhotosDeltaRequestPayload(albumName)))
@@ -211,15 +214,7 @@ public class SecondActivity extends AppCompatActivity
   }
 
   private String buildPhotosDeltaRequestPayload(String albumName) {
-    List<String> knownPhotoNames = SessionDataCache.getAlbumPhotoNames(albumName);
-    if (knownPhotoNames.isEmpty()) {
-      return albumName;
-    }
-    StringBuilder payload = new StringBuilder(albumName).append("\nDELTA");
-    for (String photoName : knownPhotoNames) {
-      payload.append("\n").append(photoName);
-    }
-    return payload.toString();
+    return albumName;
   }
 
   private void appendPhotoToRows(String photoName, Bitmap decodedPhoto) {

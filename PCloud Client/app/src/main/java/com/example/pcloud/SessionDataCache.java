@@ -55,6 +55,13 @@ public final class SessionDataCache {
     pendingDeletedPhotoNamesByAlbum.remove(normalized);
   }
 
+  public static synchronized void clearAlbumPreviewCache(String albumName) {
+    if (albumName == null) {
+      return;
+    }
+    albumPreviewBitmaps.remove(albumName.trim());
+  }
+
   public static synchronized LinkedHashMap<String, Bitmap> getAlbumPreviewBitmaps(
       String albumName) {
     LinkedHashMap<String, Bitmap> cached = albumPreviewBitmaps.get(albumName);
