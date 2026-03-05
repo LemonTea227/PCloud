@@ -44,6 +44,17 @@ PHOTOS_ERROR = "205"
 UPLOAD_PHOTO_ERROR = "206"
 PHOTO_ERROR = "207"
 DEL_PHOTOS_ERROR = "208"
+AUTH_REQUIRED_ERROR_BY_MESSAGE = {
+    "ALBUMS": ALBUMS_ERROR,
+    "NEW_ALBUM": NEW_ALBUM_ERROR,
+    "DEL_ALBUMS": DEL_ALBUMS_ERROR,
+    "PHOTOS": PHOTOS_ERROR,
+    "UPLOAD_PHOTO": UPLOAD_PHOTO_ERROR,
+    "UPLOAD_PHOTO_START": UPLOAD_PHOTO_ERROR,
+    "UPLOAD_PHOTO_CHUNK": UPLOAD_PHOTO_ERROR,
+    "PHOTO": PHOTO_ERROR,
+    "DEL_PHOTOS": DEL_PHOTOS_ERROR,
+}
 RECV_DEADLINE_SECONDS = 120.0
 RECV_POLL_SECONDS = 1.0
 HANDSHAKE_DEADLINE_SECONDS = 10.0
@@ -839,6 +850,18 @@ def receive_handler(sock, recv, aes_key=None):
     if get_header_from_message(recv, "type") == REQUEST:
         message_name = get_header_from_message(recv, "name").upper()
         message_data = get_data_from_message(recv)
+
+        if message_name not in ("LOGIN", "REGISTER"):
+            if sock not in USERS:
+                error_code = AUTH_REQUIRED_ERROR_BY_MESSAGE.get(message_name, ACCESS_DENIED)
+                SEND[sock].append(
+                    build_message(
+                        get_header_from_message(recv, "name"),
+                        error_code,
+                        aes_key=aes_key,
+                    )
+                )
+                return
 
         if message_name == "LOGIN":
             username, password = parse_login_payload(message_data)
