@@ -1209,8 +1209,8 @@ def receive_handler(sock, recv, aes_key=None):
                         build_message("DEL_PHOTOS", DEL_PHOTOS_ERROR, aes_key=aes_key)
                     )
                     return
-                album_name = payload_lines[0]
-                file_names = [name for name in payload_lines[1:] if name]
+                album_name = payload_lines[0].strip()
+                file_names = [name.strip() for name in payload_lines[1:] if name and name.strip()]
                 album_id = USERS[sock].get_album_id_by_album_name(album_name)
                 if album_id is None:
                     SEND[sock].append(

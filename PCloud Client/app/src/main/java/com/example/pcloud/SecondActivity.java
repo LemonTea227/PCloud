@@ -51,9 +51,8 @@ public class SecondActivity extends AppCompatActivity
   private final LinkedHashSet<String> selectedPhotoNames = new LinkedHashSet<>();
   private LinkedHashSet<String> pendingDeletePhotoNames = new LinkedHashSet<>();
   private final Map<String, Bitmap> previewBitmapsByName = new ConcurrentHashMap<>();
-  private final Map<Integer, StringBuilder> incomingPreviewChunksByIndex = new HashMap<>();
+  private final Map<Integer, Map<Integer, String>> incomingPreviewChunksByIndex = new HashMap<>();
   private final Map<Integer, Integer> incomingPreviewPartsByIndex = new HashMap<>();
-  private final Map<Integer, Integer> incomingPreviewPartCountByIndex = new HashMap<>();
   private final Map<Integer, String> incomingPreviewNameByIndex = new HashMap<>();
   private int expectedPreviewCount;
   private int previewPlaceholderOffset;
@@ -61,6 +60,7 @@ public class SecondActivity extends AppCompatActivity
   private boolean selectionMode;
   private final Handler deleteHandler = new Handler(Looper.getMainLooper());
   private Runnable pendingDeleteRunnable;
+  private String pendingDeletePayload;
 
   private boolean first;
 
@@ -87,6 +87,7 @@ public class SecondActivity extends AppCompatActivity
     selectionMode = false;
     expectedPreviewCount = 0;
     previewPlaceholderOffset = 0;
+    pendingDeletePayload = null;
 
     if (getIntent().hasExtra("album_name")) {
       setTitle(getIntent().getExtras().getString("album_name"));
@@ -543,12 +544,8 @@ public class SecondActivity extends AppCompatActivity
     selectionMode = false;
     refreshSelectionUi();
 
-    String payloadToSend = payload.toString();
-    pendingDeleteRunnable =
-        () ->
-            new Thread(
-                    new SendMessagesThread("DEL_PHOTOS", MessageCodes.getRequest(), payloadToSend))
-                .start();
+    pendingDeletePayload = payload.toString();
+    pendingDeleteRunnable = this::sendPendingPhotoDeleteToServer;
     deleteHandler.postDelayed(pendingDeleteRunnable, 300);
 
     Snackbar.make(
@@ -561,6 +558,7 @@ public class SecondActivity extends AppCompatActivity
                 deleteHandler.removeCallbacks(pendingDeleteRunnable);
                 pendingDeleteRunnable = null;
               }
+              pendingDeletePayload = null;
               SessionDataCache.clearAlbumPhotosPendingDeletion(
                   getAlbumName(), new ArrayList<>(pendingDeletePhotoNames));
               new Thread(
@@ -568,6 +566,21 @@ public class SecondActivity extends AppCompatActivity
                   .start();
             })
         .show();
+  }
+
+  private void sendPendingPhotoDeleteToServer() {
+    if (pendingDeleteRunnable != null) {
+      deleteHandler.removeCallbacks(pendingDeleteRunnable);
+      pendingDeleteRunnable = null;
+    }
+    if (pendingDeletePayload == null
+        || pendingDeletePayload.equals("")
+        || pendingDeletePhotoNames.isEmpty()) {
+      return;
+    }
+    new Thread(
+            new SendMessagesThread("DEL_PHOTOS", MessageCodes.getRequest(), pendingDeletePayload))
+        .start();
   }
 
   private Bitmap createLoadingBitmap() {
@@ -896,7 +909,6 @@ public class SecondActivity extends AppCompatActivity
           }
           incomingPreviewChunksByIndex.clear();
           incomingPreviewPartsByIndex.clear();
-          incomingPreviewPartCountByIndex.clear();
           incomingPreviewNameByIndex.clear();
           if (expectedPreviewCount > 0) {
             if (photos.isEmpty()) {
@@ -924,25 +936,34 @@ public class SecondActivity extends AppCompatActivity
             int partTotal = Integer.parseInt(chunkLines[5]);
             String chunkData = chunkLines[6];
 
-            if (!incomingPreviewChunksByIndex.containsKey(photoIndex)) {
-              incomingPreviewChunksByIndex.put(photoIndex, new StringBuilder());
-              incomingPreviewPartCountByIndex.put(photoIndex, 0);
+            Map<Integer, String> chunksByPart = incomingPreviewChunksByIndex.get(photoIndex);
+            if (chunksByPart == null) {
+              chunksByPart = new HashMap<>();
+              incomingPreviewChunksByIndex.put(photoIndex, chunksByPart);
             }
             incomingPreviewNameByIndex.put(photoIndex, photoName);
             incomingPreviewPartsByIndex.put(photoIndex, partTotal);
-            incomingPreviewChunksByIndex.get(photoIndex).append(chunkData);
-            incomingPreviewPartCountByIndex.put(
-                photoIndex, incomingPreviewPartCountByIndex.get(photoIndex) + 1);
+            chunksByPart.put(partIndex, chunkData);
 
-            if (incomingPreviewPartCountByIndex.get(photoIndex) >= partTotal) {
+            if (chunksByPart.size() >= partTotal) {
+              StringBuilder assembled = new StringBuilder();
+              boolean hasAllParts = true;
+              for (int expectedPart = 0; expectedPart < partTotal; expectedPart++) {
+                String chunkPart = chunksByPart.get(expectedPart);
+                if (chunkPart == null) {
+                  hasAllParts = false;
+                  break;
+                }
+                assembled.append(chunkPart);
+              }
+
               Bitmap decodedPreview =
-                  decodePreviewBitmap(incomingPreviewChunksByIndex.get(photoIndex).toString());
+                  hasAllParts ? decodePreviewBitmap(assembled.toString()) : null;
               if (decodedPreview != null) {
                 if (SessionDataCache.isPhotoPendingDeletion(getAlbumName(), photoName)) {
                   clearPlaceholderAtIndex(previewPlaceholderOffset + photoIndex);
                   incomingPreviewChunksByIndex.remove(photoIndex);
                   incomingPreviewPartsByIndex.remove(photoIndex);
-                  incomingPreviewPartCountByIndex.remove(photoIndex);
                   incomingPreviewNameByIndex.remove(photoIndex);
                   return;
                 }
@@ -955,12 +976,23 @@ public class SecondActivity extends AppCompatActivity
               }
               incomingPreviewChunksByIndex.remove(photoIndex);
               incomingPreviewPartsByIndex.remove(photoIndex);
-              incomingPreviewPartCountByIndex.remove(photoIndex);
               incomingPreviewNameByIndex.remove(photoIndex);
             }
           } catch (NumberFormatException ignored) {
           }
         }
+      }
+    }
+
+    if (message.getName().equals("PHOTOS_DONE")) {
+      if (message.getType().equals(MessageCodes.getConfirm())) {
+        for (Integer pendingIndex : new ArrayList<>(incomingPreviewChunksByIndex.keySet())) {
+          clearPlaceholderAtIndex(previewPlaceholderOffset + pendingIndex);
+        }
+        incomingPreviewChunksByIndex.clear();
+        incomingPreviewPartsByIndex.clear();
+        incomingPreviewNameByIndex.clear();
+        expectedPreviewCount = 0;
       }
     }
 
@@ -983,6 +1015,7 @@ public class SecondActivity extends AppCompatActivity
             getAlbumName(), new ArrayList<>(pendingDeletePhotoNames));
         pendingDeletePhotoNames.clear();
         pendingDeleteRunnable = null;
+        pendingDeletePayload = null;
         Toast.makeText(
                 getApplicationContext(), getString(R.string.photos_deleted), Toast.LENGTH_SHORT)
             .show();
@@ -996,10 +1029,21 @@ public class SecondActivity extends AppCompatActivity
         new Thread(new SendMessagesThread("PHOTOS", MessageCodes.getRequest(), getAlbumName()))
             .start();
         pendingDeletePhotoNames.clear();
+        pendingDeletePayload = null;
         Toast.makeText(
                 getApplicationContext(), getString(R.string.delete_photo_error), Toast.LENGTH_SHORT)
             .show();
       }
+    }
+  }
+
+  @Override
+  protected void onStop() {
+    super.onStop();
+    if (pendingDeleteRunnable != null && !pendingDeletePhotoNames.isEmpty()) {
+      deleteHandler.removeCallbacks(pendingDeleteRunnable);
+      sendPendingPhotoDeleteToServer();
+      pendingDeleteRunnable = null;
     }
   }
 
