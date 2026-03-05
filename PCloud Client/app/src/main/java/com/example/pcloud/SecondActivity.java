@@ -380,7 +380,7 @@ public class SecondActivity extends AppCompatActivity
                 SendMessagesThread.queueMessage(
                     "UPLOAD_PHOTO_CHUNK", MessageCodes.getRequest(), chunkPayload);
                 TransferNotificationHelper.showUploadProgress(
-                  getApplicationContext(), partIndex + 1, totalParts);
+                    getApplicationContext(), partIndex + 1, totalParts);
               }
             })
         .start();

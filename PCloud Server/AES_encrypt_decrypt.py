@@ -8,6 +8,31 @@ try:
 except NameError:
     xrange = range
 
+
+def _bytes_to_str(data):
+    """Convert bytes to str using latin-1 encoding for Python 3 compatibility."""
+    if isinstance(data, bytes):
+        return data.decode('latin-1')
+    return data
+
+
+def _str_to_bytes(data):
+    """Convert str to bytes using latin-1 encoding for Python 3 compatibility."""
+    if isinstance(data, str):
+        return data.encode('latin-1')
+    return data
+
+
+def _unwrap_python_bytes_repr(data):
+    """Handle accidental text payloads formatted like b'...'."""
+    if not isinstance(data, str):
+        return data
+    if len(data) >= 3 and data.startswith("b'") and data.endswith("'"):
+        return data[2:-1]
+    if len(data) >= 4 and data.startswith('b"') and data.endswith('"'):
+        return data[2:-1]
+    return data
+
 SBOX = [
     [
         "\x63",
@@ -609,12 +634,16 @@ Matrix = [
 def encrypt(data, key, iv=None, encode=False):
     """
     encrypt the given data by the key using AES128 protocol
-    :param data: the text to encrypt :type str
-    :param key: the key of the encryption :type str
-    :param iv: optional initialization vector to use CBC instead of ECB :type str
+    :param data: the text to encrypt :type str or bytes
+    :param key: the key of the encryption :type str or bytes
+    :param iv: optional initialization vector to use CBC instead of ECB :type str or bytes
     :param encode: return as Base64 encoded :type bool
     :return: encrypted data
     """
+    # Convert bytes to str if needed
+    data = _bytes_to_str(data)
+    key = _bytes_to_str(key)
+    
     if len(key) > 16:
         key = key[:16]
     else:
@@ -625,6 +654,7 @@ def encrypt(data, key, iv=None, encode=False):
     blocks = data_to_blocks(data)
 
     if iv:
+        iv = _bytes_to_str(iv)
         iv = data_to_blocks(iv)[0]
 
     for j in xrange(len(blocks)):
@@ -641,24 +671,34 @@ def encrypt(data, key, iv=None, encode=False):
         if iv:
             iv = blocks[j]
     if encode:
-        return b64encode(blocks_to_string(blocks))
+        result = blocks_to_string(blocks)
+        encoded = b64encode(_str_to_bytes(result))
+        return _bytes_to_str(encoded)
     return blocks_to_string(blocks)
 
 
 def decrypt(data, key, iv=None, decode=False):
     """
     decrypt the given data by the key using AES128 protocol
-    :param data: the text to encrypt :type str
-    :param key: the key of the encryption :type str
-    :param iv: optional initialization vector to use CBC instead of ECB :type str
+    :param data: the text to encrypt :type str or bytes
+    :param key: the key of the encryption :type str or bytes
+    :param iv: optional initialization vector to use CBC instead of ECB :type str or bytes
     :param decode: return as Base64 encoded :type bool
     :return: decrypted data
     """
+    # Convert bytes to str if needed
+    data = _bytes_to_str(data)
+    data = _unwrap_python_bytes_repr(data)
+    key = _bytes_to_str(key)
+    
     if decode:
         try:
-            data = b64decode(data)
-        except TypeError as e:
+            decoded = b64decode(data)
+            data = _bytes_to_str(decoded)
+        except (TypeError, Exception) as e:
             print(e)
+            return ""
+    
     if len(key) > 16:
         key = key[:16]
     else:
@@ -670,6 +710,7 @@ def decrypt(data, key, iv=None, decode=False):
     blocks = data_to_blocks(data)
 
     if iv:
+        iv = _bytes_to_str(iv)
         iv = data_to_blocks(iv)[0]
 
     for j in xrange(len(blocks)):
@@ -915,9 +956,12 @@ def use_rsbox(ch):
 def data_to_blocks(data):
     """
     converting string of data to 4X4 blocks
-    :param data: :type str
+    :param data: :type str or bytes
     :return: list of blocks (list that is a list of list)
     """
+    # Convert bytes to str if needed (Python 3 compatibility)
+    data = _bytes_to_str(data)
+    
     blocks = []
     block = ""
     for i in data:

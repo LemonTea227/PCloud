@@ -4,6 +4,11 @@ import datetime
 import sqlite3
 import os
 
+try:
+    xrange
+except NameError:
+    xrange = range
+
 PATH = "E:\Coding\python\project 2021"
 DBFileName = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PCloudServerDB.db")
 

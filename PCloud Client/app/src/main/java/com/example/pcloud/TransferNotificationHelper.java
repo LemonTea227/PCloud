@@ -3,9 +3,11 @@ package com.example.pcloud;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat;
 
 public final class TransferNotificationHelper {
   private static final String CHANNEL_ID = "pcloud_transfers";
@@ -22,9 +24,7 @@ public final class TransferNotificationHelper {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       NotificationChannel channel =
           new NotificationChannel(
-              CHANNEL_ID,
-              "PCloud Transfers",
-              NotificationManager.IMPORTANCE_LOW);
+              CHANNEL_ID, "PCloud Transfers", NotificationManager.IMPORTANCE_LOW);
       channel.setDescription("Upload and download progress");
       NotificationManager manager =
           (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -33,6 +33,32 @@ public final class TransferNotificationHelper {
       }
     }
     channelCreated = true;
+  }
+
+  private static boolean canPostNotifications(Context context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+      return true;
+    }
+    return ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.POST_NOTIFICATIONS)
+        == PackageManager.PERMISSION_GRANTED;
+  }
+
+  private static void safeNotify(Context context, int id, NotificationCompat.Builder builder) {
+    if (!canPostNotifications(context)) {
+      return;
+    }
+    try {
+      NotificationManagerCompat.from(context).notify(id, builder.build());
+    } catch (SecurityException ignored) {
+    }
+  }
+
+  private static void safeCancel(Context context, int id) {
+    try {
+      NotificationManagerCompat.from(context).cancel(id);
+    } catch (SecurityException ignored) {
+    }
   }
 
   public static void showUploadProgress(Context context, int done, int total) {
@@ -47,14 +73,12 @@ public final class TransferNotificationHelper {
 
     if (total > 0) {
       int safeDone = Math.max(0, Math.min(done, total));
-      builder
-          .setContentText(safeDone + "/" + total + " parts")
-          .setProgress(total, safeDone, false);
+      builder.setContentText(safeDone + "/" + total + " parts").setProgress(total, safeDone, false);
     } else {
       builder.setContentText("Preparing upload").setProgress(0, 0, true);
     }
 
-    NotificationManagerCompat.from(context).notify(UPLOAD_NOTIFICATION_ID, builder.build());
+    safeNotify(context, UPLOAD_NOTIFICATION_ID, builder);
   }
 
   public static void completeUpload(Context context) {
@@ -68,8 +92,8 @@ public final class TransferNotificationHelper {
             .setOngoing(false)
             .setProgress(0, 0, false)
             .setPriority(NotificationCompat.PRIORITY_LOW);
-    NotificationManagerCompat.from(context).notify(UPLOAD_NOTIFICATION_ID, builder.build());
-    NotificationManagerCompat.from(context).cancel(UPLOAD_NOTIFICATION_ID);
+    safeNotify(context, UPLOAD_NOTIFICATION_ID, builder);
+    safeCancel(context, UPLOAD_NOTIFICATION_ID);
   }
 
   public static void failUpload(Context context) {
@@ -82,8 +106,8 @@ public final class TransferNotificationHelper {
             .setAutoCancel(true)
             .setOngoing(false)
             .setPriority(NotificationCompat.PRIORITY_LOW);
-    NotificationManagerCompat.from(context).notify(UPLOAD_NOTIFICATION_ID, builder.build());
-    NotificationManagerCompat.from(context).cancel(UPLOAD_NOTIFICATION_ID);
+    safeNotify(context, UPLOAD_NOTIFICATION_ID, builder);
+    safeCancel(context, UPLOAD_NOTIFICATION_ID);
   }
 
   public static void showDownloadProgress(Context context, int done, int total) {
@@ -98,14 +122,12 @@ public final class TransferNotificationHelper {
 
     if (total > 0) {
       int safeDone = Math.max(0, Math.min(done, total));
-      builder
-          .setContentText(safeDone + "/" + total + " parts")
-          .setProgress(total, safeDone, false);
+      builder.setContentText(safeDone + "/" + total + " parts").setProgress(total, safeDone, false);
     } else {
       builder.setContentText("Preparing download").setProgress(0, 0, true);
     }
 
-    NotificationManagerCompat.from(context).notify(DOWNLOAD_NOTIFICATION_ID, builder.build());
+    safeNotify(context, DOWNLOAD_NOTIFICATION_ID, builder);
   }
 
   public static void completeDownload(Context context) {
@@ -119,8 +141,8 @@ public final class TransferNotificationHelper {
             .setOngoing(false)
             .setProgress(0, 0, false)
             .setPriority(NotificationCompat.PRIORITY_LOW);
-    NotificationManagerCompat.from(context).notify(DOWNLOAD_NOTIFICATION_ID, builder.build());
-    NotificationManagerCompat.from(context).cancel(DOWNLOAD_NOTIFICATION_ID);
+    safeNotify(context, DOWNLOAD_NOTIFICATION_ID, builder);
+    safeCancel(context, DOWNLOAD_NOTIFICATION_ID);
   }
 
   public static void failDownload(Context context) {
@@ -133,7 +155,7 @@ public final class TransferNotificationHelper {
             .setAutoCancel(true)
             .setOngoing(false)
             .setPriority(NotificationCompat.PRIORITY_LOW);
-    NotificationManagerCompat.from(context).notify(DOWNLOAD_NOTIFICATION_ID, builder.build());
-    NotificationManagerCompat.from(context).cancel(DOWNLOAD_NOTIFICATION_ID);
+    safeNotify(context, DOWNLOAD_NOTIFICATION_ID, builder);
+    safeCancel(context, DOWNLOAD_NOTIFICATION_ID);
   }
 }

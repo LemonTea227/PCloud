@@ -16,6 +16,7 @@ import shutil
 import hashlib
 import base64
 import io
+import traceback
 from diffie_hellman import diffie_hellman_server
 
 try:
@@ -89,11 +90,14 @@ def parse_login_payload(message_data):
     lines = [line for line in cleaned.split("\n") if normalize_auth_field(line) != ""]
     username = lines[0] if len(lines) >= 1 else ""
     password = lines[1] if len(lines) >= 2 else ""
-    if username == "" and cleaned != "":
+    if (username == "" or password == "") and cleaned != "":
         tokens = [token for token in cleaned.split() if token]
-        if len(tokens) >= 1:
+        if len(tokens) >= 2 and password == "":
             username = tokens[0]
-        if len(tokens) >= 2:
+            password = tokens[1]
+        elif username == "" and len(tokens) >= 1:
+            username = tokens[0]
+        elif password == "" and len(tokens) >= 2:
             password = tokens[1]
     return sanitize_username(username), sanitize_password(password)
 
@@ -764,12 +768,7 @@ def async_send_receive(sock):
                 )
                 if not data:
                     raise socket.error
-                request_worker = threading.Thread(
-                    target=receive_handler_safe,
-                    args=(sock, data, aes_key),
-                )
-                request_worker.daemon = True
-                request_worker.start()
+                receive_handler_safe(sock, data, aes_key)
 
             except socket.timeout:
                 continue
@@ -790,6 +789,7 @@ def async_send_receive(sock):
             except Exception:
                 pass
             print("disconnecting user due to error: %s" % str(e))
+            traceback.print_exc()
             try:
                 sock.close()
             except Exception:
@@ -820,6 +820,7 @@ def receive_handler_safe(sock, recv, aes_key=None):
             SEND[sock].append(build_message(request_name, ACCESS_DENIED, aes_key=aes_key))
     except Exception as e:
         print("request handler failed: %s" % str(e))
+        traceback.print_exc()
         if is_request and request_name != "" and sock in SEND:
             SEND[sock].append(build_message(request_name, ACCESS_DENIED, aes_key=aes_key))
 

@@ -8,7 +8,7 @@ Monorepo with:
 
 - Java JDK 11+ (required for Android Gradle Plugin 7.x)
 - Android SDK configured via `ANDROID_SDK_ROOT` or `PCloud Client/local.properties`
-- Python 2.7 for the legacy server runtime
+- Python 3.10+ for server runtime
 
 ## One-command run
 
@@ -19,7 +19,7 @@ From repo root:
 ```
 
 What it does:
-1. Starts the Python server (`py -2 pcloud_server.py`) in background.
+1. Starts the Python server (`py -3 pcloud_server.py`) in background.
 2. Updates Android socket host/port in `MySocket.java`.
 3. Builds and installs debug APK.
 4. Launches the app with `adb` (if available).
@@ -55,11 +55,11 @@ Install server runtime deps:
 
 ```powershell
 cd "PCloud Server"
-py -2 -m pip install -r requirements.txt
+py -3 -m pip install -r requirements.txt
 ```
 
 Install optional server dev deps:
 
 ```powershell
-py -2 -m pip install -r requirements-dev.txt
+py -3 -m pip install -r requirements-dev.txt
 ```

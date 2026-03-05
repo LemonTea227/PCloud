@@ -35,11 +35,16 @@ function Stop-StalePCloudServers {
     }
 }
 
-function Get-Python2Executable {
+function Get-Python3Executable {
+    $venvPython = Join-Path $repoRoot ".venv/Scripts/python.exe"
+    if (Test-Path $venvPython) {
+        return $venvPython
+    }
+
     $pyCommand = Get-Command py -ErrorAction SilentlyContinue
     if ($pyCommand) {
         try {
-            $candidate = (& $pyCommand.Source -2 -c "import sys;print(sys.executable)" 2>$null | Select-Object -Last 1)
+            $candidate = (& $pyCommand.Source -3 -c "import sys;print(sys.executable)" 2>$null | Select-Object -Last 1)
             if ($candidate) {
                 $candidate = $candidate.Trim()
                 if ($candidate -and (Test-Path $candidate)) {
@@ -51,8 +56,9 @@ function Get-Python2Executable {
     }
 
     $fallbacks = @(
-        "C:\Python27\python.exe",
-        "C:\Python2\python.exe"
+        "C:\Python311\python.exe",
+        "C:\Python310\python.exe",
+        "C:\Python39\python.exe"
     )
     foreach ($path in $fallbacks) {
         if (Test-Path $path) {
@@ -396,9 +402,9 @@ function Ensure-ClientDevice([string]$adbPath) {
 
 Write-Host "[1/4] Validating prerequisites..."
 Ensure-Command java
-$python2Exe = Get-Python2Executable
-if (-not $python2Exe) {
-    throw "Python 2 executable was not found. Install Python 2.7 or ensure 'py -2' works."
+$pythonExe = Get-Python3Executable
+if (-not $pythonExe) {
+    throw "Python 3 executable was not found. Install Python 3.10+ or ensure 'py -3' works."
 }
 $adbPath = Get-AdbPath
 
@@ -421,10 +427,10 @@ Stop-StalePCloudServers
 $startServerInBackground = $BackgroundServer -or (-not $SkipClient)
 $serverProcess = $null
 if ($startServerInBackground) {
-    $serverProcess = Start-Process -FilePath $python2Exe -ArgumentList "pcloud_server.py" -WorkingDirectory $serverDir -PassThru
+    $serverProcess = Start-Process -FilePath $pythonExe -ArgumentList "pcloud_server.py" -WorkingDirectory $serverDir -PassThru
     Start-Sleep -Seconds 2
     if ($serverProcess.HasExited) {
-        throw "Server process exited immediately. Check 'PCloud Server' dependencies and Python 2 availability."
+        throw "Server process exited immediately. Check 'PCloud Server' dependencies and Python 3 availability."
     }
     Write-Host "Server running in background (PID $($serverProcess.Id)). Use Stop-Process -Id $($serverProcess.Id) to stop it."
 }
@@ -432,7 +438,7 @@ elseif ($SkipClient) {
     Write-Host "Server starting in foreground. Press Ctrl+C in this terminal to stop it."
     Push-Location $serverDir
     try {
-        & $python2Exe "pcloud_server.py"
+        & $pythonExe "pcloud_server.py"
     } finally {
         Pop-Location
     }

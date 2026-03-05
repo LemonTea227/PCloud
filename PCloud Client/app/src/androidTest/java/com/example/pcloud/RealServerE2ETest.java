@@ -19,6 +19,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.net.Uri;
+import android.os.Build;
 import android.os.SystemClock;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.espresso.NoMatchingViewException;
@@ -46,7 +47,14 @@ public class RealServerE2ETest {
     SessionPrefs.setKeepLoggedIn(appContext, false);
     SessionPrefs.clearCredentials(appContext);
 
-    MySocket.setIP("10.0.2.2");
+    String fingerprint = Build.FINGERPRINT == null ? "" : Build.FINGERPRINT.toLowerCase();
+    boolean emulatorLike =
+        fingerprint.contains("generic")
+            || fingerprint.contains("emulator")
+            || fingerprint.contains("sdk_gphone");
+    if (emulatorLike) {
+      MySocket.setIP("10.0.2.2");
+    }
     MySocket.setAESkey(new byte[0]);
     MySocket.setExtraMessage("");
     MySocket.setSocket(null);

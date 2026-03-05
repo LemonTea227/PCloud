@@ -79,18 +79,21 @@ Write-Host "[2/3] Python unit tests"
 Push-Location $serverDir
 try {
     if (Test-Path (Join-Path $repoRoot ".venv/Scripts/python.exe")) {
-        & (Join-Path $repoRoot ".venv/Scripts/python.exe") -m black .
+        $pythonExe = (Join-Path $repoRoot ".venv/Scripts/python.exe")
     } else {
-        & py -3 -m black .
+        $pythonExe = "py"
     }
 
-    & py -2 -m unittest discover -s tests -p "test_*.py"
+    if ($pythonExe -eq "py") {
+        & py -3 -m black .
+        & py -3 -m unittest discover -s tests -p "test_*.py"
+    } else {
+        & $pythonExe -m black .
+        & $pythonExe -m unittest discover -s tests -p "test_*.py"
+    }
+
     if ($LASTEXITCODE -ne 0) {
-        if (Test-Path (Join-Path $repoRoot ".venv/Scripts/python.exe")) {
-            & (Join-Path $repoRoot ".venv/Scripts/python.exe") -m unittest discover -s tests -p "test_*.py"
-        } else {
-            throw "Python test execution failed and no fallback interpreter was found."
-        }
+        throw "Python 3 test execution failed."
     }
 } finally {
     Pop-Location

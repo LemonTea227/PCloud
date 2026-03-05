@@ -14,9 +14,9 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.ImageButton;
 import androidx.appcompat.app.AppCompatActivity;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ByteArrayOutputStream;
 import java.util.Objects;
 
 public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessagesListener {
@@ -249,7 +249,7 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
                 SendMessagesThread.queueMessage(
                     "UPLOAD_PHOTO_CHUNK", MessageCodes.getRequest(), chunkPayload);
                 TransferNotificationHelper.showUploadProgress(
-                  getApplicationContext(), partIndex + 1, totalParts);
+                    getApplicationContext(), partIndex + 1, totalParts);
               }
             })
         .start();

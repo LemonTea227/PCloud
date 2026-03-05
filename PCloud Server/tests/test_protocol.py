@@ -28,6 +28,16 @@ class _AlwaysTimeoutSocket:
         raise socket.timeout()
 
 
+class _ChunkSocket:
+    def __init__(self, chunks):
+        self._chunks = list(chunks)
+
+    def recv(self, _size):
+        if not self._chunks:
+            return b""
+        return self._chunks.pop(0)
+
+
 class ProtocolTests(unittest.TestCase):
     def test_build_message_headers(self):
         message = pcloud_protocol.build_message("LOGIN", "0", "alice\\nsecret")
@@ -65,6 +75,17 @@ class ProtocolTests(unittest.TestCase):
         sock = _AlwaysTimeoutSocket()
         with self.assertRaises(socket.timeout):
             pcloud_protocol.recv_by_protocol(sock, deadline_seconds=0.2)
+
+    def test_recv_by_protocol_malformed_header_returns_empty(self):
+        sock = _ChunkSocket([b"name:PING\n\n", b"data:abc"])
+        result = pcloud_protocol.recv_by_protocol(sock, deadline_seconds=0.2)
+        self.assertEqual("", result)
+
+    def test_recv_by_protocol_header_too_large_returns_empty(self):
+        huge = b"a" * 10000
+        sock = _ChunkSocket([huge])
+        result = pcloud_protocol.recv_by_protocol(sock, deadline_seconds=0.2, max_header_bytes=64)
+        self.assertEqual("", result)
 
 
 if __name__ == "__main__":

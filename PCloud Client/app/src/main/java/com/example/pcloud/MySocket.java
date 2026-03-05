@@ -60,7 +60,7 @@ public class MySocket {
 
   private static BufferedReader input;
 
-  private static String INERIP = "192.168.0.14";private static String IP = "192.168.0.14"; // configured by set-phone-host.ps1
+  private static String INERIP = "192.168.0.7";private static String IP = "192.168.0.7"; // configured by set-phone-host.ps1
 
   private static int Port = 22703;
 
