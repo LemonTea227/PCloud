@@ -2,4 +2,4 @@
 ignore=.git,.venv
 
 [FORMAT]
-max-line-length=200
+max-line-length=100

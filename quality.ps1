@@ -1,44 +1,12 @@
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $repoRoot "pcloud-helpers.ps1")
 $clientDir = Join-Path $repoRoot "PCloud Client"
 $serverDir = Join-Path $repoRoot "PCloud Server"
 $localPropertiesFile = Join-Path $clientDir "local.properties"
 $gradlePropertiesFile = Join-Path $clientDir "gradle.properties"
 
-function Get-ProjectJavaHome {
-    if ($env:JAVA_HOME -and (Test-Path $env:JAVA_HOME)) {
-        return $env:JAVA_HOME
-    }
-
-    if (Test-Path $gradlePropertiesFile) {
-        $javaHomeLine = (Get-Content $gradlePropertiesFile | Where-Object { $_ -match '^org\.gradle\.java\.home=' } | Select-Object -First 1)
-        if ($javaHomeLine) {
-            $javaHome = $javaHomeLine.Substring('org.gradle.java.home='.Length)
-            if (Test-Path $javaHome) {
-                return $javaHome
-            }
-        }
-    }
-
-    return $null
-}
-
-function Test-Java11OrNewer {
-    $javaOutput = cmd /c "java -version 2>&1"
-    $versionLine = $javaOutput | Select-Object -First 1
-
-    if ($versionLine -match 'version "(\d+)') {
-        $major = [int]$matches[1]
-        if ($major -eq 1 -and $versionLine -match 'version "1\.(\d+)') {
-            return ([int]$matches[1] -ge 11)
-        }
-        return ($major -ge 11)
-    }
-
-    return $false
-}
-
-$projectJavaHome = Get-ProjectJavaHome
+$projectJavaHome = Get-ProjectJavaHome -GradlePropertiesFile $gradlePropertiesFile
 if ($projectJavaHome) {
     $env:JAVA_HOME = $projectJavaHome
     $javaBinPath = "$projectJavaHome\bin"

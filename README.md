@@ -4,6 +4,14 @@ Monorepo with:
 - `PCloud Server` (Python server)
 - `PCloud Client` (Android app)
 
+## What's in this repo
+
+This repository includes:
+- PowerShell scripts to run, test, and lint the project (`run.ps1`, `quality.ps1`, `e2e.ps1`, `set-phone-host.ps1`)
+- Shared PowerShell helpers (`pcloud-helpers.ps1`)
+- Python formatter/linter config (`pyproject.toml`, `setup.cfg`, `.pylintrc`)
+- Editor and git configuration (`.editorconfig`, `.gitignore`)
+
 ## Requirements
 
 - Java JDK 11+ (required for Android Gradle Plugin 7.x)
