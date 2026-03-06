@@ -105,6 +105,7 @@ function Set-ClientSocketConfig {
         [Parameter(Mandatory)][string]$File,
         [Parameter(Mandatory)][string]$SocketHost,
         [Parameter(Mandatory)][int]$Port,
+        [string]$InnerIp,
         [switch]$DryRun
     )
 
@@ -130,8 +131,17 @@ function Set-ClientSocketConfig {
     # The INERIP capture group includes any optional trailing comment so it is preserved when the declarations are split.
     # Use [^\S\r\n]* for the indent capture so \s does not accidentally span newlines in .NET regex.
     $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)(private\s+static\s+String\s+INERIP\s*=\s*"[^"]*"\s*;[^\S\r\n]*(//[^\r\n]*)?)[^\S\r\n]*(private\s+static\s+String\s+IP)', "`$1`$2`n`$1`$4")
-    # Replace INERIP, anchoring to line start to preserve leading indentation and any existing trailing comment
-    $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)private\s+static\s+String\s+INERIP\s*=\s*"[^"]*"\s*;([^\S\r\n]*//[^\r\n]*)?', "`$1private static String INERIP = `"$SocketHost`";`$2")
+    # Replace INERIP only when an explicit InnerIp value is provided; otherwise the existing fallback is preserved as-is.
+    if ($InnerIp) {
+        $ip = $null
+        $innerIpParsed = [System.Net.IPAddress]::TryParse($InnerIp, [ref]$ip)
+        $isValidInner = ($innerIpParsed -and $ip.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork) -or
+            ($InnerIp -match '^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)*$')
+        if (-not $isValidInner) {
+            throw "Invalid InnerIp value '$InnerIp'. Must be a valid IPv4 address or hostname."
+        }
+        $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)private\s+static\s+String\s+INERIP\s*=\s*"[^"]*"\s*;([^\S\r\n]*//[^\r\n]*)?', "`$1private static String INERIP = `"$InnerIp`";`$2")
+    }
     # Replace IP, anchoring to line start to preserve leading indentation and any existing trailing comment
     $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)private\s+static\s+String\s+IP\s*=\s*"[^"]*"\s*;([^\S\r\n]*//[^\r\n]*)?', "`$1private static String IP = `"$SocketHost`";`$2")
     # Replace Port, anchoring to line start to preserve leading indentation
@@ -143,12 +153,14 @@ function Set-ClientSocketConfig {
     }
 
     if ($DryRun) {
-        Write-Host "Dry-run: socket config would be updated to host=$SocketHost port=$Port"
+        $innerMsg = if ($InnerIp) { " innerIp=$InnerIp" } else { "" }
+        Write-Host "Dry-run: socket config would be updated to host=$SocketHost$innerMsg port=$Port"
         return
     }
 
     [System.IO.File]::WriteAllText($File, $updated, [System.Text.Encoding]::UTF8)
-    Write-Host "Updated MySocket.java with host=$SocketHost port=$Port"
+    $innerMsg = if ($InnerIp) { " innerIp=$InnerIp" } else { "" }
+    Write-Host "Updated MySocket.java with host=$SocketHost$innerMsg port=$Port"
 
     $verify = Get-Content -Raw -Path $File
     $ineripMatch = [regex]::Match($verify, 'private\s+static\s+String\s+INERIP\s*=\s*"([^"]+)"')
