@@ -187,10 +187,10 @@ if ($adb -and (Test-Path $adb)) {
     try {
         $isEmulator = $false
         $qemuOutput = & $adb shell getprop ro.kernel.qemu 2>&1
-        $exitCode = $LASTEXITCODE
+        $qemuExitCode = $LASTEXITCODE
         $qemu = ($qemuOutput | Out-String).Trim()
-        if ($exitCode -ne 0) {
-            Write-Warning "Emulator detection command 'adb shell getprop ro.kernel.qemu' failed with exit code ${exitCode}: $qemu; treating device as physical."
+        if ($qemuExitCode -ne 0) {
+            Write-Warning "Emulator detection command 'adb shell getprop ro.kernel.qemu' failed with exit code ${qemuExitCode}: $qemu; treating device as physical."
         } else {
             $isEmulator = ($qemu -eq "1")
         }
