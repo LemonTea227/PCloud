@@ -1,11 +1,23 @@
 # Shared helper functions for PCloud PowerShell scripts.
 # Dot-source this file from run.ps1, set-phone-host.ps1, quality.ps1, and e2e.ps1.
 
+function Test-Python310OrNewer([string]$pythonExe) {
+    try {
+        $versionStr = (& $pythonExe -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null | Select-Object -Last 1).Trim()
+        if ($versionStr -match '^(\d+)\.(\d+)') {
+            $major = [int]$matches[1]
+            $minor = [int]$matches[2]
+            return ($major -gt 3) -or ($major -eq 3 -and $minor -ge 10)
+        }
+    } catch {}
+    return $false
+}
+
 function Get-Python3Executable {
     param([string]$RepoRoot = $PSScriptRoot)
 
     $venvPython = Join-Path $RepoRoot ".venv/Scripts/python.exe"
-    if (Test-Path $venvPython) {
+    if ((Test-Path $venvPython) -and (Test-Python310OrNewer $venvPython)) {
         return $venvPython
     }
 
@@ -15,7 +27,7 @@ function Get-Python3Executable {
             $candidate = (& $pyCommand.Source -3 -c "import sys;print(sys.executable)" 2>$null | Select-Object -Last 1)
             if ($candidate) {
                 $candidate = $candidate.Trim()
-                if ($candidate -and (Test-Path $candidate)) {
+                if ($candidate -and (Test-Path $candidate) -and (Test-Python310OrNewer $candidate)) {
                     return $candidate
                 }
             }
@@ -28,7 +40,7 @@ function Get-Python3Executable {
         "C:\Python310\python.exe"
     )
     foreach ($path in $fallbacks) {
-        if (Test-Path $path) {
+        if ((Test-Path $path) -and (Test-Python310OrNewer $path)) {
             return $path
         }
     }
@@ -120,8 +132,8 @@ function Set-ClientSocketConfig {
     $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)(private\s+static\s+String\s+INERIP\s*=\s*"[^"]*"\s*;[^\S\r\n]*(//[^\r\n]*)?)[^\S\r\n]*(private\s+static\s+String\s+IP)', "`$1`$2`n`$1`$4")
     # Replace INERIP, anchoring to line start to preserve leading indentation and any existing trailing comment
     $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)private\s+static\s+String\s+INERIP\s*=\s*"[^"]*"\s*;([^\S\r\n]*//[^\r\n]*)?', "`$1private static String INERIP = `"$SocketHost`";`$2")
-    # Replace IP, anchoring to line start to preserve leading indentation
-    $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)private\s+static\s+String\s+IP\s*=\s*"[^"]*"\s*;[^\S\r\n]*(//[^\r\n]*)?', "`$1private static String IP = `"$SocketHost`"; // configured by pcloud scripts")
+    # Replace IP, anchoring to line start to preserve leading indentation and any existing trailing comment
+    $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)private\s+static\s+String\s+IP\s*=\s*"[^"]*"\s*;([^\S\r\n]*//[^\r\n]*)?', "`$1private static String IP = `"$SocketHost`";`$2")
     # Replace Port, anchoring to line start to preserve leading indentation
     $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)private\s+static\s+int\s+Port\s*=\s*\d+\s*;', "`$1private static int Port = $Port;")
 
