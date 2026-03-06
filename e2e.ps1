@@ -149,24 +149,29 @@ if ($IncludeRealServer) {
 $savedVerifierSettings = $null
 $savedAnimationScales = $null
 if ($adb -and (Test-Path $adb)) {
-    try {
-        & $adb start-server | Out-Null
-    } catch {
-        Write-Warning "adb start-server failed: $($_.Exception.Message)"
+    $adbStartOutput = & $adb start-server 2>&1
+    $adbStartExitCode = $LASTEXITCODE
+    if ($adbStartExitCode -ne 0) {
+        if ($adbStartOutput) {
+            Write-Warning ("adb start-server failed with exit code {0}:`n{1}" -f $adbStartExitCode, ($adbStartOutput | Out-String).TrimEnd())
+        } else {
+            Write-Warning ("adb start-server failed with exit code {0}." -f $adbStartExitCode)
+        }
     }
 
     $hasDevice = $false
     $firstAdbError = $null
     $attempts = [Math]::Ceiling($DeviceWaitSeconds / 2)
     for ($i = 0; $i -lt $attempts; $i++) {
-        try {
-            $deviceLines = & $adb devices
-            if (@($deviceLines | Select-String -Pattern "\tdevice$").Count -gt 0) {
-                $hasDevice = $true
-                break
+        $deviceOutput = & $adb devices 2>&1
+        $devicesExitCode = $LASTEXITCODE
+        if ($devicesExitCode -ne 0) {
+            if (-not $firstAdbError) {
+                $firstAdbError = "exit code $devicesExitCode$(if ($deviceOutput) { ": $(($deviceOutput | Out-String).Trim())" })"
             }
-        } catch {
-            if (-not $firstAdbError) { $firstAdbError = $_.Exception.Message }
+        } elseif (@($deviceOutput | Select-String -Pattern "\tdevice$").Count -gt 0) {
+            $hasDevice = $true
+            break
         }
         Start-Sleep -Seconds 2
     }
@@ -181,11 +186,13 @@ if ($adb -and (Test-Path $adb)) {
 
     try {
         $isEmulator = $false
-        try {
-            $qemu = (& $adb shell getprop ro.kernel.qemu 2>$null | Out-String).Trim()
+        $qemuOutput = & $adb shell getprop ro.kernel.qemu 2>&1
+        $exitCode = $LASTEXITCODE
+        $qemu = ($qemuOutput | Out-String).Trim()
+        if ($exitCode -ne 0) {
+            Write-Warning "Emulator detection command 'adb shell getprop ro.kernel.qemu' failed with exit code ${exitCode}: $qemu; treating device as physical."
+        } else {
             $isEmulator = ($qemu -eq "1")
-        } catch {
-            Write-Warning "Emulator detection failed: $($_.Exception.Message); treating device as physical."
         }
 
         if ($isEmulator) {
