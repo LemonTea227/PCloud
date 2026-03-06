@@ -27,7 +27,7 @@ From repo root:
 ```
 
 What it does:
-1. Starts the Python server (`py -3 pcloud_server.py`) in background.
+1. Starts the Python server (auto-discovers `.venv/Scripts/python.exe`, `py -3`, or a standard install) in background.
 2. Updates Android socket host/port in `MySocket.java`.
 3. Builds and installs debug APK.
 4. Launches the app with `adb` (if available).

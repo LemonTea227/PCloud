@@ -36,39 +36,6 @@ function Stop-StalePCloudServers {
     }
 }
 
-function Get-Python3Executable {
-    $venvPython = Join-Path $repoRoot ".venv/Scripts/python.exe"
-    if (Test-Path $venvPython) {
-        return $venvPython
-    }
-
-    $pyCommand = Get-Command py -ErrorAction SilentlyContinue
-    if ($pyCommand) {
-        try {
-            $candidate = (& $pyCommand.Source -3 -c "import sys;print(sys.executable)" 2>$null | Select-Object -Last 1)
-            if ($candidate) {
-                $candidate = $candidate.Trim()
-                if ($candidate -and (Test-Path $candidate)) {
-                    return $candidate
-                }
-            }
-        } catch {
-        }
-    }
-
-    $fallbacks = @(
-        "C:\Python311\python.exe",
-        "C:\Python310\python.exe"
-    )
-    foreach ($path in $fallbacks) {
-        if (Test-Path $path) {
-            return $path
-        }
-    }
-
-    return $null
-}
-
 $projectJavaHome = Get-ProjectJavaHome -GradlePropertiesFile $gradlePropertiesFile
 if ($projectJavaHome) {
     $env:JAVA_HOME = $projectJavaHome
@@ -292,7 +259,7 @@ function Ensure-ClientDevice([string]$adbPath) {
 
 Write-Host "[1/4] Validating prerequisites..."
 Ensure-Command java
-$pythonExe = Get-Python3Executable
+$pythonExe = Get-Python3Executable -RepoRoot $repoRoot
 if (-not $pythonExe) {
     throw "Python 3 executable was not found. Install Python 3.10+ or ensure 'py -3' works."
 }
