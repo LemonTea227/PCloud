@@ -15,46 +15,13 @@ $reportPath = "PCloud Client/app/build/reports/androidTests/connected/index.html
 $adb = Get-AdbPath
 $gradleExitCode = 1
 
-function Get-Python3Executable {
-    $venvPython = Join-Path $repoRoot ".venv/Scripts/python.exe"
-    if (Test-Path $venvPython) {
-        return $venvPython
-    }
-
-    $pyCommand = Get-Command py -ErrorAction SilentlyContinue
-    if ($pyCommand) {
-        try {
-            $candidate = (& $pyCommand.Source -3 -c "import sys;print(sys.executable)" 2>$null | Select-Object -Last 1)
-            if ($candidate) {
-                $candidate = $candidate.Trim()
-                if ($candidate -and (Test-Path $candidate)) {
-                    return $candidate
-                }
-            }
-        } catch {
-        }
-    }
-
-    $fallbacks = @(
-        "C:\Python311\python.exe",
-        "C:\Python310\python.exe"
-    )
-    foreach ($path in $fallbacks) {
-        if (Test-Path $path) {
-            return $path
-        }
-    }
-
-    return $null
-}
-
 function Invoke-RealServerCleanup {
     if (-not (Test-Path $cleanupScript)) {
         Write-Host "Warning: cleanup script not found at $cleanupScript"
         return
     }
 
-    $pythonExe = Get-Python3Executable
+    $pythonExe = Get-Python3Executable -RepoRoot $repoRoot
     if (-not $pythonExe) {
         Write-Host "Warning: Python 3 not found; skipping real-server test data cleanup."
         return
@@ -168,10 +135,6 @@ try {
     & ".\gradlew.bat" :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
     if ($LASTEXITCODE -ne 0) {
         throw "Gradle assemble tasks (:app:assembleDebug, :app:assembleDebugAndroidTest) failed (exit code $LASTEXITCODE)."
-    }
-    if ($adb -and (Test-Path $adb)) {
-        & $adb install -r "app/build/outputs/apk/debug/app-debug.apk" | Out-Host
-        & $adb install -r "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk" | Out-Host
     }
 
     $effectiveGradleArgs = @()
