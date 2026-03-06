@@ -36,8 +36,7 @@ function Get-Python3Executable {
 
     $fallbacks = @(
         "C:\Python311\python.exe",
-        "C:\Python310\python.exe",
-        "C:\Python39\python.exe"
+        "C:\Python310\python.exe"
     )
     foreach ($path in $fallbacks) {
         if (Test-Path $path) {
@@ -70,15 +69,47 @@ function Invoke-RealServerCleanup {
     }
 }
 
+function Get-AdbGlobalSetting([string]$adbPath, [string]$setting) {
+    try {
+        $value = (& $adbPath shell settings get global $setting 2>$null).Trim()
+        if ($value -eq "null" -or [string]::IsNullOrEmpty($value)) { return $null }
+        return $value
+    } catch {
+        return $null
+    }
+}
+
 function Disable-AdbPackageVerification([string]$adbPath) {
     if (-not $adbPath) {
-        return
+        return $null
+    }
+    $saved = @{
+        verifier_verify_adb_installs = Get-AdbGlobalSetting -adbPath $adbPath -setting "verifier_verify_adb_installs"
+        package_verifier_enable      = Get-AdbGlobalSetting -adbPath $adbPath -setting "package_verifier_enable"
     }
     try {
         & $adbPath shell settings put global verifier_verify_adb_installs 0 | Out-Null
         & $adbPath shell settings put global package_verifier_enable 0 | Out-Null
     } catch {
         Write-Host "Warning: could not disable package verifier on device."
+    }
+    return $saved
+}
+
+function Restore-AdbPackageVerification([string]$adbPath, [hashtable]$saved) {
+    if (-not $adbPath -or -not $saved) { return }
+    try {
+        foreach ($key in $saved.Keys) {
+            $value = $saved[$key]
+            if ($null -eq $value) {
+                & $adbPath shell settings delete global $key | Out-Null
+            } else {
+                & $adbPath shell settings put global $key $value | Out-Null
+            }
+        }
+        Write-Host "Restored package verifier settings on device."
+    } catch {
+        Write-Host "Warning: could not restore package verifier settings on device."
     }
 }
 
@@ -89,6 +120,7 @@ if ($IncludeRealServer) {
     Invoke-RealServerCleanup
 }
 
+$savedVerifierSettings = $null
 if (Test-Path $adb) {
     try {
         & $adb start-server | Out-Null
@@ -115,7 +147,7 @@ if (Test-Path $adb) {
     }
 
     try {
-        Disable-AdbPackageVerification -adbPath $adb
+        $savedVerifierSettings = Disable-AdbPackageVerification -adbPath $adb
         & $adb shell settings put global window_animation_scale 0 | Out-Null
         & $adb shell settings put global transition_animation_scale 0 | Out-Null
         & $adb shell settings put global animator_duration_scale 0 | Out-Null
@@ -124,7 +156,7 @@ if (Test-Path $adb) {
         Write-Host "Warning: could not set animation scales via adb."
     }
 } else {
-    Write-Host "Warning: adb not found at $adb"
+    throw "adb not found at $adb. Install Android SDK Platform-Tools and ensure it is accessible."
 }
 
 Push-Location $clientDir
@@ -155,6 +187,9 @@ try {
 }
 finally {
     Pop-Location
+    if ($savedVerifierSettings) {
+        Restore-AdbPackageVerification -adbPath $adb -saved $savedVerifierSettings
+    }
 }
 
 if ($gradleExitCode -eq 0) {
