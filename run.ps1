@@ -105,18 +105,24 @@ function Test-Java11OrNewer {
 $projectJavaHome = Get-ProjectJavaHome
 if ($projectJavaHome) {
     $env:JAVA_HOME = $projectJavaHome
-    if ($env:Path -notlike "$projectJavaHome\\bin*") {
-        $env:Path = "$projectJavaHome\\bin;" + $env:Path
+    $javaBinPath = "$projectJavaHome\bin"
+    if (($env:Path -split ';') -notcontains $javaBinPath) {
+        $env:Path = "$javaBinPath;" + $env:Path
     }
 }
 
 function Set-ClientSocketConfig([string]$file, [string]$socketHost, [int]$socketPort) {
+    $isValidIpv4 = $socketHost -match '^\d{1,3}(\.\d{1,3}){3}$'
+    $isValidHostname = $socketHost -match '^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)*$'
+    if (-not ($isValidIpv4 -or $isValidHostname)) {
+        throw "Invalid host value '$socketHost'. Must be a valid IPv4 address or hostname."
+    }
     $raw = Get-Content -Raw -Path $file
     $updated = $raw -replace 'private static String INERIP = ".*?";', "private static String INERIP = `"$socketHost`";"
     $updated = $updated -replace 'private static String IP = ".*?";\s*//.*', "private static String IP = `"$socketHost`"; // configured by run.ps1"
     $updated = $updated -replace 'private static int Port = \d+;', "private static int Port = $socketPort;"
     if ($updated -ne $raw) {
-        Set-Content -Path $file -Value $updated -NoNewline
+        Set-Content -Path $file -Value $updated -NoNewline -Encoding utf8
     }
 }
 
@@ -243,6 +249,9 @@ function Install-DebugApkWithRetry([string]$adbPath) {
     if (-not $installSucceeded) {
         Write-Host "Falling back to assembleDebug because installDebug kept failing."
         .\gradlew.bat assembleDebug
+        if ($LASTEXITCODE -ne 0) {
+            throw "assembleDebug failed (exit code $LASTEXITCODE)."
+        }
     }
 }
 
@@ -469,14 +478,17 @@ if (-not $SkipClient) {
                         Install-DebugApkWithRetry -adbPath $adbPath
                     } else {
                         .\gradlew.bat assembleDebug
+                        if ($LASTEXITCODE -ne 0) { throw "assembleDebug failed (exit code $LASTEXITCODE)." }
                         Write-Host "Device detected but not fully booted. Built debug APK instead of installing."
                     }
                 } else {
                     .\gradlew.bat assembleDebug
+                    if ($LASTEXITCODE -ne 0) { throw "assembleDebug failed (exit code $LASTEXITCODE)." }
                     Write-Host "No connected phone/emulator available. Built debug APK instead of installing."
                 }
             } else {
                 .\gradlew.bat assembleDebug
+                if ($LASTEXITCODE -ne 0) { throw "assembleDebug failed (exit code $LASTEXITCODE)." }
                 Write-Host "adb not found; built debug APK instead of installing."
             }
         }

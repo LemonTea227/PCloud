@@ -41,8 +41,9 @@ function Test-Java11OrNewer {
 $projectJavaHome = Get-ProjectJavaHome
 if ($projectJavaHome) {
     $env:JAVA_HOME = $projectJavaHome
-    if ($env:Path -notlike "$projectJavaHome\\bin*") {
-        $env:Path = "$projectJavaHome\\bin;" + $env:Path
+    $javaBinPath = "$projectJavaHome\bin"
+    if (($env:Path -split ';') -notcontains $javaBinPath) {
+        $env:Path = "$javaBinPath;" + $env:Path
     }
 }
 
@@ -66,6 +67,9 @@ if ($androidSdkConfigured -and (Test-Java11OrNewer)) {
     Push-Location $clientDir
     try {
         .\gradlew.bat :app:spotlessApply :app:lintDebug :app:testDebugUnitTest
+        if ($LASTEXITCODE -ne 0) {
+            throw "Android quality checks failed (exit code $LASTEXITCODE)."
+        }
     } finally {
         Pop-Location
     }
@@ -86,14 +90,22 @@ try {
 
     if ($pythonExe -eq "py") {
         & py -3 -m black .
+        if ($LASTEXITCODE -ne 0) {
+            throw "Python formatting (black) failed (exit code $LASTEXITCODE)."
+        }
         & py -3 -m unittest discover -s tests -p "test_*.py"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Python 3 test execution failed (exit code $LASTEXITCODE)."
+        }
     } else {
         & $pythonExe -m black .
+        if ($LASTEXITCODE -ne 0) {
+            throw "Python formatting (black) failed (exit code $LASTEXITCODE)."
+        }
         & $pythonExe -m unittest discover -s tests -p "test_*.py"
-    }
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Python 3 test execution failed."
+        if ($LASTEXITCODE -ne 0) {
+            throw "Python 3 test execution failed (exit code $LASTEXITCODE)."
+        }
     }
 } finally {
     Pop-Location
