@@ -71,7 +71,10 @@ function Invoke-RealServerCleanup {
 
 function Get-AdbGlobalSetting([string]$adbPath, [string]$setting) {
     try {
-        $value = (& $adbPath shell settings get global $setting 2>$null).Trim()
+        $value = (& $adbPath shell settings get global $setting 2>$null | Select-Object -Last 1)
+        if ($null -ne $value) {
+            $value = $value.Trim()
+        }
         if ($value -eq "null" -or [string]::IsNullOrEmpty($value)) { return $null }
         return $value
     } catch {

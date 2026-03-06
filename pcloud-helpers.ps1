@@ -93,7 +93,7 @@ function Set-ClientSocketConfig {
         return
     }
 
-    Set-Content -Path $File -Value $updated -Encoding utf8
+    [System.IO.File]::WriteAllText($File, $updated, [System.Text.Encoding]::UTF8)
     Write-Host "Updated MySocket.java with host=$SocketHost port=$Port"
 
     $verify = Get-Content -Raw -Path $File
