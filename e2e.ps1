@@ -84,6 +84,41 @@ function Restore-AdbPackageVerification([string]$adbPath, [hashtable]$saved) {
     }
 }
 
+function Disable-AdbAnimationScales([string]$adbPath) {
+    if (-not $adbPath) { return $null }
+    $saved = @{
+        window_animation_scale     = Get-AdbGlobalSetting -adbPath $adbPath -setting "window_animation_scale"
+        transition_animation_scale = Get-AdbGlobalSetting -adbPath $adbPath -setting "transition_animation_scale"
+        animator_duration_scale    = Get-AdbGlobalSetting -adbPath $adbPath -setting "animator_duration_scale"
+    }
+    try {
+        & $adbPath shell settings put global window_animation_scale 0 | Out-Null
+        & $adbPath shell settings put global transition_animation_scale 0 | Out-Null
+        & $adbPath shell settings put global animator_duration_scale 0 | Out-Null
+        Write-Host "Device animations disabled for stable Espresso runs."
+    } catch {
+        Write-Host "Warning: could not set animation scales via adb."
+    }
+    return $saved
+}
+
+function Restore-AdbAnimationScales([string]$adbPath, [hashtable]$saved) {
+    if (-not $adbPath -or -not $saved) { return }
+    try {
+        foreach ($key in $saved.Keys) {
+            $value = $saved[$key]
+            if ($null -eq $value) {
+                & $adbPath shell settings delete global $key | Out-Null
+            } else {
+                & $adbPath shell settings put global $key $value | Out-Null
+            }
+        }
+        Write-Host "Restored animation scale settings on device."
+    } catch {
+        Write-Host "Warning: could not restore animation scale settings on device."
+    }
+}
+
 Write-Host "Running Android E2E tests..."
 
 if ($IncludeRealServer) {
@@ -92,6 +127,7 @@ if ($IncludeRealServer) {
 }
 
 $savedVerifierSettings = $null
+$savedAnimationScales = $null
 if ($adb -and (Test-Path $adb)) {
     try {
         & $adb start-server | Out-Null
@@ -129,12 +165,9 @@ if ($adb -and (Test-Path $adb)) {
         } else {
             Write-Host "Physical device detected. Skipping package verifier changes (emulators only)."
         }
-        & $adb shell settings put global window_animation_scale 0 | Out-Null
-        & $adb shell settings put global transition_animation_scale 0 | Out-Null
-        & $adb shell settings put global animator_duration_scale 0 | Out-Null
-        Write-Host "Device animations disabled for stable Espresso runs."
+        $savedAnimationScales = Disable-AdbAnimationScales -adbPath $adb
     } catch {
-        Write-Host "Warning: could not set animation scales via adb."
+        Write-Host "Warning: could not complete device setup (emulator detection, package verifier, or animation scales)."
     }
 } else {
     throw "adb not found. Install Android SDK Platform-Tools and ensure it is on PATH or ANDROID_SDK_ROOT is set."
@@ -166,6 +199,9 @@ finally {
     Pop-Location
     if ($savedVerifierSettings) {
         Restore-AdbPackageVerification -adbPath $adb -saved $savedVerifierSettings
+    }
+    if ($savedAnimationScales) {
+        Restore-AdbAnimationScales -adbPath $adb -saved $savedAnimationScales
     }
 }
 
