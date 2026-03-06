@@ -9,10 +9,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $repoRoot "pcloud-helpers.ps1")
 $serverDir = Join-Path $repoRoot "PCloud Server"
 $clientDir = Join-Path $repoRoot "PCloud Client"
 $socketFile = Join-Path $clientDir "app/src/main/java/com/example/pcloud/MySocket.java"
-$phoneHostScript = Join-Path $repoRoot "set-phone-host.ps1"
 $gradlePropertiesFile = Join-Path $clientDir "gradle.properties"
 
 function Ensure-Command([string]$name) {
@@ -57,8 +57,7 @@ function Get-Python3Executable {
 
     $fallbacks = @(
         "C:\Python311\python.exe",
-        "C:\Python310\python.exe",
-        "C:\Python39\python.exe"
+        "C:\Python310\python.exe"
     )
     foreach ($path in $fallbacks) {
         if (Test-Path $path) {
@@ -108,26 +107,6 @@ if ($projectJavaHome) {
     $javaBinPath = "$projectJavaHome\bin"
     if (($env:Path -split ';') -notcontains $javaBinPath) {
         $env:Path = "$javaBinPath;" + $env:Path
-    }
-}
-
-function Set-ClientSocketConfig([string]$file, [string]$socketHost, [int]$socketPort) {
-    $ip = $null
-    $isValidIpv4 = [System.Net.IPAddress]::TryParse($socketHost, [ref]$ip) -and
-        $ip.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork
-    $isValidHostname = $false
-    if (-not $isValidIpv4) {
-        $isValidHostname = $socketHost -match '^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)*$'
-    }
-    if (-not ($isValidIpv4 -or $isValidHostname)) {
-        throw "Invalid host value '$socketHost'. Must be a valid IPv4 address or hostname."
-    }
-    $raw = Get-Content -Raw -Path $file
-    $updated = $raw -replace 'private static String INERIP = ".*?";', "private static String INERIP = `"$socketHost`";"
-    $updated = $updated -replace 'private static String IP = ".*?";\s*//.*', "private static String IP = `"$socketHost`"; // configured by run.ps1"
-    $updated = $updated -replace 'private static int Port = \d+;', "private static int Port = $socketPort;"
-    if ($updated -ne $raw) {
-        Set-Content -Path $file -Value $updated -NoNewline -Encoding utf8
     }
 }
 
@@ -303,54 +282,6 @@ function Get-ConnectedPhysicalDeviceSerial([string]$adbPath) {
     }
 }
 
-function Get-PreferredLanIPv4 {
-    $candidates = @()
-    try {
-        $configs = Get-NetIPConfiguration -ErrorAction Stop | Where-Object {
-            $_.NetAdapter -and $_.NetAdapter.Status -eq "Up" -and $_.IPv4Address
-        }
-        foreach ($cfg in $configs) {
-            foreach ($ipObj in $cfg.IPv4Address) {
-                $ip = $ipObj.IPAddress
-                if (-not $ip) { continue }
-                if ($ip -like "127.*" -or $ip -like "169.254.*" -or $ip -eq "0.0.0.0") { continue }
-                $score = 0
-                if ($cfg.IPv4DefaultGateway) { $score += 10 }
-                if ($cfg.NetAdapter.InterfaceDescription -match "Wi-?Fi|Wireless") { $score += 4 }
-                if ($cfg.NetAdapter.InterfaceDescription -match "Ethernet") { $score += 3 }
-                if ($cfg.NetAdapter.InterfaceDescription -match "Hyper-V|Virtual|VMware|TAP|Loopback") { $score -= 20 }
-                $isPrivate = $ip -like "10.*" -or $ip -like "192.168.*" -or ($ip -match "^172\.(1[6-9]|2[0-9]|3[0-1])\.")
-                if ($isPrivate) { $score += 5 }
-                $candidates += [PSCustomObject]@{ IP = $ip; Score = $score }
-            }
-        }
-    } catch {
-        return $null
-    }
-    if (-not $candidates -or $candidates.Count -eq 0) {
-        return $null
-    }
-    return ($candidates | Sort-Object -Property Score -Descending | Select-Object -First 1).IP
-}
-
-function Set-ClientSocketViaHelper([string]$socketHost, [int]$port) {
-    if (-not (Test-Path $phoneHostScript)) {
-        Set-ClientSocketConfig -file $socketFile -socketHost $socketHost -socketPort $port
-        return
-    }
-
-    $mode = "custom"
-    if ($socketHost -eq "10.0.2.2") {
-        $mode = "emulator"
-    }
-
-    if ($mode -eq "custom") {
-        & $phoneHostScript -Mode custom -CustomHost $socketHost -Port $port
-    } else {
-        & $phoneHostScript -Mode emulator -Port $port
-    }
-}
-
 function Ensure-ClientDevice([string]$adbPath) {
     if (-not $adbPath) {
         return $false
@@ -461,7 +392,7 @@ elseif ($SkipClient) {
 
 if (-not $SkipClient) {
     Write-Host "[3/4] Updating client socket target (host=$resolvedServerHost, port=$ServerPort)..."
-    Set-ClientSocketViaHelper -socketHost $resolvedServerHost -port $ServerPort
+    Set-ClientSocketConfig -File $socketFile -SocketHost $resolvedServerHost -Port $ServerPort
 
     Write-Host "[4/4] Building/installing Android client..."
     if (-not (Test-Java11OrNewer)) {
