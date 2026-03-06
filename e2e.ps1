@@ -175,7 +175,7 @@ if ($adb -and (Test-Path $adb)) {
         }
         Start-Sleep -Seconds 2
     }
-    if ($firstAdbError) {
+    if (-not $hasDevice -and $firstAdbError) {
         Write-Warning "adb devices failed during device wait: $firstAdbError"
     }
 
