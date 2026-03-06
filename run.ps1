@@ -50,11 +50,6 @@ function Wait-ForAndroidBoot([string]$adbPath, [int]$timeoutSeconds = 120) {
         return $false
     }
 
-    try {
-        & $adbPath wait-for-device | Out-Null
-    } catch {
-        Start-Sleep -Seconds 2
-    }
     $attempts = [Math]::Ceiling($timeoutSeconds / 2)
     for ($i = 0; $i -lt $attempts; $i++) {
         try {
@@ -87,10 +82,6 @@ function Test-AndroidSystemReady([string]$adbPath) {
 
 function Wait-ForAndroidSystemReady([string]$adbPath, [int]$timeoutSeconds = 180) {
     if (-not $adbPath) { return $false }
-    try {
-        & $adbPath wait-for-device | Out-Null
-    } catch {
-    }
     $attempts = [Math]::Ceiling($timeoutSeconds / 2)
     for ($i = 0; $i -lt $attempts; $i++) {
         if (Test-AndroidSystemReady -adbPath $adbPath) {
