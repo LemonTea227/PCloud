@@ -9,14 +9,7 @@ $clientDir = Join-Path $repoRoot "PCloud Client"
 $serverDir = Join-Path $repoRoot "PCloud Server"
 $gradlePropertiesFile = Join-Path $clientDir "gradle.properties"
 
-$projectJavaHome = Get-ProjectJavaHome -GradlePropertiesFile $gradlePropertiesFile
-if ($projectJavaHome) {
-    $env:JAVA_HOME = $projectJavaHome
-    $javaBinPath = "$projectJavaHome\bin"
-    if (($env:Path -split ';') -notcontains $javaBinPath) {
-        $env:Path = "$javaBinPath;" + $env:Path
-    }
-}
+Initialize-JavaHome -GradlePropertiesFile $gradlePropertiesFile
 
 $androidSdkConfigured = Test-AndroidSdk -ClientPath $clientDir
 

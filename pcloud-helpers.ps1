@@ -158,7 +158,7 @@ function Set-ClientSocketConfig {
         return
     }
 
-    [System.IO.File]::WriteAllText($File, $updated, [System.Text.Encoding]::UTF8)
+    [System.IO.File]::WriteAllText($File, $updated, (New-Object System.Text.UTF8Encoding $false))
     $innerMsg = if ($InnerIp) { " innerIp=$InnerIp" } else { "" }
     Write-Host "Updated MySocket.java with host=$SocketHost$innerMsg port=$Port"
 
@@ -168,6 +168,18 @@ function Set-ClientSocketConfig {
     $portMatch = [regex]::Match($verify, 'private\s+static\s+int\s+Port\s*=\s*(\d+)')
     if ($ineripMatch.Success -and $ipMatch.Success -and $portMatch.Success) {
         Write-Host "Applied values => INERIP=$($ineripMatch.Groups[1].Value), IP=$($ipMatch.Groups[1].Value), Port=$($portMatch.Groups[1].Value)"
+    }
+}
+
+function Initialize-JavaHome {
+    param([string]$GradlePropertiesFile = "")
+    $projectJavaHome = Get-ProjectJavaHome -GradlePropertiesFile $GradlePropertiesFile
+    if ($projectJavaHome) {
+        $env:JAVA_HOME = $projectJavaHome
+        $javaBinPath = "$projectJavaHome\bin"
+        if (($env:Path -split ';') -notcontains $javaBinPath) {
+            $env:Path = "$javaBinPath;" + $env:Path
+        }
     }
 }
 

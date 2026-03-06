@@ -36,14 +36,7 @@ function Stop-StalePCloudServers {
     }
 }
 
-$projectJavaHome = Get-ProjectJavaHome -GradlePropertiesFile $gradlePropertiesFile
-if ($projectJavaHome) {
-    $env:JAVA_HOME = $projectJavaHome
-    $javaBinPath = "$projectJavaHome\bin"
-    if (($env:Path -split ';') -notcontains $javaBinPath) {
-        $env:Path = "$javaBinPath;" + $env:Path
-    }
-}
+Initialize-JavaHome -GradlePropertiesFile $gradlePropertiesFile
 
 function Wait-ForAndroidBoot([string]$adbPath, [int]$timeoutSeconds = 120) {
     if (-not $adbPath) {
@@ -113,7 +106,7 @@ function Install-DebugApkWithRetry([string]$adbPath) {
     }
 
     if (-not $installSucceeded) {
-        Write-Host "Falling back to assembleDebug because installDebug kept failing."
+        Write-Warning "Falling back to assembleDebug because installDebug kept failing."
         .\gradlew.bat assembleDebug
         if ($LASTEXITCODE -ne 0) {
             throw "assembleDebug failed (exit code $LASTEXITCODE)."
