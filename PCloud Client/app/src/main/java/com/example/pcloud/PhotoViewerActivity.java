@@ -190,8 +190,10 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
           }
         }
       }
-      if (MediaTypeUtil.isGifFileName(getPhotoName()) || MediaTypeUtil.isVideoFileName(getPhotoName())) {
+      if (MediaTypeUtil.isVideoFileName(getPhotoName())) {
         requestFullPhoto();
+      } else if (MediaTypeUtil.isGifFileName(getPhotoName())) {
+        requestPreviewPhoto();
       } else {
         requestPreviewPhoto();
       }
@@ -270,8 +272,10 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
       photoViewerGifImageView.setImageDrawable(null);
     }
     currentMimeType = MediaTypeUtil.detectMimeType(getPhotoName());
-    if (MediaTypeUtil.isGifFileName(getPhotoName()) || MediaTypeUtil.isVideoFileName(getPhotoName())) {
+    if (MediaTypeUtil.isVideoFileName(getPhotoName())) {
       requestFullPhoto();
+    } else if (MediaTypeUtil.isGifFileName(getPhotoName())) {
+      requestPreviewPhoto();
     } else {
       requestPreviewPhoto();
     }
@@ -730,7 +734,7 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
                     }
 
                     currentMediaBytes = currentRequestWantsFull ? finalDecodedBytes : null;
-                    if (MediaTypeUtil.isGifFileName(getPhotoName()) && currentRequestWantsFull) {
+                    if (MediaTypeUtil.isGifFileName(getPhotoName())) {
                       setViewerModeGif();
                       Glide.with(PhotoViewerActivity.this)
                           .asGif()

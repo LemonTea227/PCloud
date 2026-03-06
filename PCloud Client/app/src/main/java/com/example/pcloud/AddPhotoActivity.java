@@ -11,12 +11,14 @@ import android.util.Base64;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
+import android.webkit.MimeTypeMap;
 import android.widget.Button;
 import android.widget.ImageButton;
 import androidx.appcompat.app.AppCompatActivity;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Locale;
 import java.util.Objects;
 
 public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessagesListener {
@@ -67,6 +69,7 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
             if (rawImageBytes == null || rawImageBytes.length == 0) {
               return;
             }
+            nameOfFile = ensureFileNameHasExtension(nameOfFile, selectedImageUri, rawImageBytes);
             String encodedImage = Base64.encodeToString(rawImageBytes, Base64.NO_WRAP);
             MySocket.beginTransfer();
             TransferNotificationHelper.showUploadProgress(getApplicationContext(), 0, 0);
@@ -253,5 +256,39 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
               }
             })
         .start();
+  }
+
+  private String ensureFileNameHasExtension(
+      String fileName, android.net.Uri uri, byte[] rawBytes) {
+    String safeName = fileName == null ? "" : fileName.trim();
+    if (safeName.equals("")) {
+      safeName = "media_" + System.currentTimeMillis();
+    }
+    int dotIndex = safeName.lastIndexOf('.');
+    if (dotIndex > 0 && dotIndex < safeName.length() - 1) {
+      return safeName;
+    }
+
+    String contentType = getContentResolver().getType(uri);
+    String extension =
+        contentType == null
+            ? null
+            : MimeTypeMap.getSingleton().getExtensionFromMimeType(contentType);
+
+    if ((extension == null || extension.trim().equals("")) && rawBytes != null && rawBytes.length >= 6) {
+      if (rawBytes[0] == 'G'
+          && rawBytes[1] == 'I'
+          && rawBytes[2] == 'F'
+          && rawBytes[3] == '8'
+          && (rawBytes[4] == '7' || rawBytes[4] == '9')
+          && rawBytes[5] == 'a') {
+        extension = "gif";
+      }
+    }
+
+    if (extension == null || extension.trim().equals("")) {
+      return safeName;
+    }
+    return safeName + "." + extension.toLowerCase(Locale.ROOT);
   }
 }

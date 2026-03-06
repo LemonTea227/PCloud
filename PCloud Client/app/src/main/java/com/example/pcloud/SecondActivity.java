@@ -1018,7 +1018,7 @@ public class SecondActivity extends AppCompatActivity
       if (selectedImage == null) {
         return;
       }
-      nameOfFile = ensureFileNameHasExtension(getFileName(selectedImage), selectedImage);
+      nameOfFile = getFileName(selectedImage);
       String contentType = getContentResolver().getType(selectedImage);
       if (contentType == null) {
         contentType = "image/png";
@@ -1045,6 +1045,7 @@ public class SecondActivity extends AppCompatActivity
             .show();
         return;
       }
+      nameOfFile = ensureFileNameHasExtension(nameOfFile, selectedImage, rawImageBytes);
 
       Bitmap imageToPreview = BitmapFactory.decodeByteArray(rawImageBytes, 0, rawImageBytes.length);
       boolean isVideo = MediaTypeUtil.isVideoFileName(nameOfFile) || contentType.startsWith("video/");
@@ -1159,7 +1160,7 @@ public class SecondActivity extends AppCompatActivity
     return result;
   }
 
-  private String ensureFileNameHasExtension(String fileName, android.net.Uri uri) {
+  private String ensureFileNameHasExtension(String fileName, android.net.Uri uri, byte[] rawBytes) {
     String safeName = fileName == null ? "" : fileName.trim();
     if (safeName.equals("")) {
       safeName = "media_" + System.currentTimeMillis();
@@ -1190,6 +1191,19 @@ public class SecondActivity extends AppCompatActivity
         extension = "avi";
       } else if (contentType.equalsIgnoreCase("video/3gpp")) {
         extension = "3gp";
+      }
+    }
+
+    if (extension == null || extension.trim().equals("")) {
+      if (rawBytes != null && rawBytes.length >= 6) {
+        if (rawBytes[0] == 'G'
+            && rawBytes[1] == 'I'
+            && rawBytes[2] == 'F'
+            && rawBytes[3] == '8'
+            && (rawBytes[4] == '7' || rawBytes[4] == '9')
+            && rawBytes[5] == 'a') {
+          extension = "gif";
+        }
       }
     }
 

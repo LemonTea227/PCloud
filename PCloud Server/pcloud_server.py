@@ -67,6 +67,7 @@ PREVIEW_CACHE_DIR_NAME = ".preview_cache"
 PREVIEW_CACHE_VERSION = "v2"
 PREVIEW_MAX_ENCODED_LENGTH = 300000
 VIDEO_PREVIEW_SOURCE_MAX_BYTES = 64 * 1024 * 1024
+GIF_PREVIEW_SOURCE_MAX_BYTES = 24 * 1024 * 1024
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".3gp", ".mov", ".avi", ".m4v"}
 GIF_EXTENSION = ".gif"
 FALLBACK_PREVIEW_PNG_B64 = (
@@ -615,6 +616,7 @@ def get_preview_encoded_for_photo(sock, album_name, file_name, file_data=""):
                 cached = cache_file.read().strip()
                 if cached != "" and (
                     is_video_file_name(file_name)
+                    or is_gif_file_name(file_name)
                     or len(cached) <= PREVIEW_MAX_ENCODED_LENGTH
                 ):
                     return cached
@@ -627,7 +629,15 @@ def get_preview_encoded_for_photo(sock, album_name, file_name, file_data=""):
             file_data = str(source_from_db)
 
     source_bytes = load_source_bytes_for_preview(album_path, file_name, file_data)
-    preview_bytes = build_preview_bytes(source_bytes)
+    preview_bytes = None
+    if (
+        is_gif_file_name(file_name)
+        and source_bytes is not None
+        and len(source_bytes) <= GIF_PREVIEW_SOURCE_MAX_BYTES
+    ):
+        preview_bytes = source_bytes
+    else:
+        preview_bytes = build_preview_bytes(source_bytes)
     if (
         preview_bytes is None
         and is_video_file_name(file_name)
