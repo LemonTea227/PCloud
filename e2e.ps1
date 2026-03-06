@@ -43,6 +43,7 @@ $script:AdbReadError = [PSCustomObject]@{ __sentinel__ = 'read_error' }
 function Get-AdbGlobalSetting([string]$adbPath, [string]$setting) {
     try {
         $value = (& $adbPath shell settings get global $setting 2>$null | Select-Object -Last 1)
+        if ($LASTEXITCODE -ne 0) { return $script:AdbReadError }
         if ($null -ne $value) {
             $value = $value.Trim()
         }
@@ -61,11 +62,13 @@ function Disable-AdbPackageVerification([string]$adbPath) {
         verifier_verify_adb_installs = Get-AdbGlobalSetting -adbPath $adbPath -setting "verifier_verify_adb_installs"
         package_verifier_enable      = Get-AdbGlobalSetting -adbPath $adbPath -setting "package_verifier_enable"
     }
-    try {
-        & $adbPath shell settings put global verifier_verify_adb_installs 0 | Out-Null
-        & $adbPath shell settings put global package_verifier_enable 0 | Out-Null
-    } catch {
-        Write-Host "Warning: could not disable package verifier on device."
+    $allSet = $true
+    & $adbPath shell settings put global verifier_verify_adb_installs 0 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "Warning: could not set verifier_verify_adb_installs to 0."; $allSet = $false }
+    & $adbPath shell settings put global package_verifier_enable 0 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "Warning: could not set package_verifier_enable to 0."; $allSet = $false }
+    if ($allSet) {
+        Write-Host "Package verifier disabled on device."
     }
     return $saved
 }
@@ -75,7 +78,7 @@ function Restore-AdbPackageVerification([string]$adbPath, [hashtable]$saved) {
     $failures = 0
     foreach ($key in $saved.Keys) {
         $value = $saved[$key]
-        if ($value -is [PSCustomObject]) {
+        if ($value -is [PSCustomObject] -and $value.__sentinel__ -eq 'read_error') {
             Write-Host "Warning: original value of '$key' could not be read; skipping restore."
             $failures++
         } elseif ($null -eq $value) {
@@ -118,7 +121,7 @@ function Restore-AdbAnimationScales([string]$adbPath, [hashtable]$saved) {
     $failures = 0
     foreach ($key in $saved.Keys) {
         $value = $saved[$key]
-        if ($value -is [PSCustomObject]) {
+        if ($value -is [PSCustomObject] -and $value.__sentinel__ -eq 'read_error') {
             Write-Host "Warning: original value of '$key' could not be read; skipping restore."
             $failures++
         } elseif ($null -eq $value) {
