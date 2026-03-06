@@ -67,6 +67,13 @@
                 tools:layout_editor_absoluteY="160dp" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <CheckBox
+            android:id="@+id/rememberMeLoginCheckBox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/keep_me_logged_in" />
+
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

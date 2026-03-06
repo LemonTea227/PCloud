@@ -1,0 +1,5 @@
+[MASTER]
+ignore=.git,.venv
+
+[FORMAT]
+max-line-length=100

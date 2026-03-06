@@ -7,4 +7,16 @@
         android:icon="@drawable/add_photo"
         android:title="@string/add"
         app:showAsAction="always" />
+
+    <item
+        android:id="@+id/sharePhotosMenuItem"
+        android:icon="@android:drawable/ic_menu_share"
+        android:title="@string/share"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/deletePhotosMenuItem"
+        android:icon="@android:drawable/ic_menu_delete"
+        android:title="@string/delete"
+        app:showAsAction="ifRoom" />
 </menu>

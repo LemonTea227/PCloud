@@ -2,133 +2,328 @@ package com.example.pcloud;
 
 import android.app.Activity;
 import android.content.Intent;
-
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.net.SocketTimeoutException;
+import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 class ReceiveMessagesThread implements Runnable {
-    private static Activity activity;
-    private static ReceiveMessagesListener listener;
+  private static final BigInteger DH_P = new BigInteger("286134470859861285423767856156329902081");
+  private static Activity activity;
+  private static ReceiveMessagesListener listener;
+  private static final AtomicBoolean running = new AtomicBoolean(false);
+  private boolean reconnectingHandshake = false;
+  private int reconnectSecret = 0;
 
-    public static synchronized void setListener(ReceiveMessagesListener listener) {
-        ReceiveMessagesThread.listener = listener;
+  public static synchronized void setListener(ReceiveMessagesListener listener) {
+    ReceiveMessagesThread.listener = listener;
+  }
+
+  public static synchronized void setActivity(Activity activity) {
+    ReceiveMessagesThread.activity = activity;
+  }
+
+  @Override
+  public void run() {
+    if (!running.compareAndSet(false, true)) {
+      ClientLogger.log(
+          "ReceiveMessagesThread", "Receiver loop already running; skipping duplicate start");
+      return;
     }
 
-    public static synchronized void setActivity(Activity activity) {
-        ReceiveMessagesThread.activity = activity;
+    if (activity == null) {
+      running.set(false);
+      return;
     }
-
-    @Override
-    public void run() {
-        while (!MySocket.isClosed()) {
+    ClientLogger.log(
+        "ReceiveMessagesThread",
+        "Receiver loop started for " + activity.getClass().getSimpleName());
+    try {
+      while (!MySocket.isClosed()) {
+        if (MySocket.isInactivityTimedOut()) {
+          handleInactivityTimeout();
+          break;
+        }
+        try {
+          BufferedReader input = MySocket.getInput();
+          if (input == null) {
             try {
-                String m = MySocket.getExtraMessage();
-                String d = "";
-                int size = -1;
-                int length = -2;
-                char[] buffer = new char[1024];
+              Thread.sleep(50);
+            } catch (InterruptedException ignored) {
+            }
+            continue;
+          }
+          String m = MySocket.getExtraMessage();
+          if (m == null) {
+            m = "";
+          }
+          char[] buffer = new char[1024];
 
-                while (!m.contains("\n\n") || length < size) {
-                    try {
-                        if (m.equals("") || !m.contains("\n\n") || (length < size && size != -1)) {
-                            int charsRead = MySocket.getInput().read(buffer);
-                            if (charsRead == -1)
-                                continue;
-                            m += new String(buffer).substring(0, charsRead);
-                        }
-                        if (m.equals("")) {
-                            break;
-                        }
-
-                        // check if the size of the received data (length) equals to size value (size)
-                        String[] sp_mes = m.split("\n\ndata:");
-                        if (size < 0) {
-                            size = Integer.parseInt(sp_mes[0].split("\n")[2].substring(5));
-                        }
-                        if (m.contains("\n\n")) {
-                            d = "";
-                            for (int i = 1; i < sp_mes.length; i++) {
-                                d += sp_mes[i] + "\n\n";
-                            }
-                            if (d.length() >= 2) {
-                                if (MySocket.doAdd(m))
-                                    d = d.substring(0, d.length() - 2);
-                            }
-                            length = d.length();
-                        }
-
-
-                    } catch (SocketTimeoutException e) {
-                        continue;
-                    }
-
+          while (true) {
+            try {
+              int headerEndIndex = m.indexOf("\n\n");
+              if (headerEndIndex < 0) {
+                int charsRead = input.read(buffer);
+                if (charsRead == -1) {
+                  continue;
                 }
-                if (length > size) {
-                    MySocket.setExtraMessage(d.substring(size, length));//optional error
-                    m = m.substring(0, m.length() - (length - size));
-                } else {
-                    MySocket.setExtraMessage("");
+                m += new String(buffer, 0, charsRead);
+                continue;
+              }
+
+              String header = m.substring(0, headerEndIndex);
+              String[] headerLines = header.split("\n");
+              if (headerLines.length < 3 || !headerLines[2].startsWith("size:")) {
+                int charsRead = input.read(buffer);
+                if (charsRead == -1) {
+                  continue;
+                }
+                m += new String(buffer, 0, charsRead);
+                continue;
+              }
+
+              int size;
+              try {
+                size = Integer.parseInt(headerLines[2].substring(5));
+              } catch (NumberFormatException ignored) {
+                int charsRead = input.read(buffer);
+                if (charsRead == -1) {
+                  continue;
+                }
+                m += new String(buffer, 0, charsRead);
+                continue;
+              }
+
+              int dataStartIndex = headerEndIndex + 7;
+              int messageLength = dataStartIndex + size;
+              if (m.length() < messageLength) {
+                int charsRead = input.read(buffer);
+                if (charsRead == -1) {
+                  continue;
+                }
+                m += new String(buffer, 0, charsRead);
+                continue;
+              }
+
+              final String message = m.substring(0, messageLength);
+              if (m.length() > messageLength) {
+                MySocket.setExtraMessage(m.substring(messageLength));
+              } else {
+                MySocket.setExtraMessage("");
+              }
+
+              if (!message.equals("")) {
+                ClientLogger.log(
+                    "ReceiveMessagesThread", "Received message bytes=" + message.length());
+                MySocket.markActivity();
+
+                if (reconnectingHandshake && handleReconnectHandshakeMessage(message)) {
+                  break;
                 }
 
-
-                final String message = m;
-
-                if (!message.equals("")) {
-
-                    activity.runOnUiThread(new Runnable() {
+                if (activity != null && listener != null) {
+                  activity.runOnUiThread(
+                      new Runnable() {
                         @Override
                         public void run() {
-                            listener.messageReceived(message, activity);
+                          listener.messageReceived(message, activity);
                         }
-                    });
-
-                } else {
-                    throw new IOException();
+                      });
                 }
-            } catch (IOException e) {
-                MySocket.setSocket(null);
-                MySocket.setInput(null);
-                MySocket.setOutput(null);
-                Intent goSplash = new Intent(activity.getApplicationContext(), SplashActivity.class);
-                goSplash.putExtra("LostConnection", true);
-                MySocket.setClosed(true);
-                activity.startActivity(goSplash);
-                break;
-            }
-        }
-        MySocket.setClosed(false);
-        MySocket.setExtraMessage("");
-    }
-}
 
+                break;
+              }
+
+              throw new IOException();
+
+            } catch (SocketTimeoutException e) {
+              continue;
+            }
+          }
+        } catch (IOException e) {
+          if (MySocket.isClosed()) {
+            break;
+          }
+          ClientLogger.logError("ReceiveMessagesThread", "Connection lost while receiving", e);
+          MySocket.setSocket(null);
+          MySocket.setInput(null);
+          MySocket.setOutput(null);
+          if (tryReconnectInPlace()) {
+            continue;
+          }
+          if (activity != null) {
+            Intent goSplash = new Intent(activity.getApplicationContext(), SplashActivity.class);
+            goSplash.putExtra("LostConnection", true);
+            MySocket.setClosed(true);
+            activity.startActivity(goSplash);
+          }
+          break;
+        }
+      }
+    } finally {
+      running.set(false);
+      MySocket.setExtraMessage("");
+    }
+  }
+
+  private byte[] bigIntNumToBytes(BigInteger num) {
+    byte[] bytes = new byte[16];
+    for (int i = bytes.length - 1; i >= 0; i--) {
+      byte newNum = (byte) num.mod(new BigInteger("256")).intValue();
+      num = num.divide(new BigInteger("256"));
+      bytes[i] = newNum;
+    }
+    return bytes;
+  }
+
+  private boolean tryReconnectInPlace() {
+    try {
+      reconnectSecret = new Random().nextInt(20302) + 1;
+      MySocket.setAESkey(new byte[] {});
+      reconnectingHandshake = true;
+      new ConnectionThread().run();
+      boolean connected = MySocket.getInput() != null && MySocket.getOutput() != null;
+      boolean canReauthenticate = canReauthenticateAfterReconnect();
+      if (!connected || !canReauthenticate) {
+        reconnectingHandshake = false;
+      }
+      return connected && canReauthenticate;
+    } catch (Exception ex) {
+      reconnectingHandshake = false;
+      return false;
+    }
+  }
+
+  private boolean canReauthenticateAfterReconnect() {
+    if (ReconnectSession.hasCredentials()) {
+      return true;
+    }
+    if (activity == null || !SessionPrefs.shouldKeepLoggedIn(activity)) {
+      return false;
+    }
+    String savedUser = SessionPrefs.getSavedUsername(activity);
+    String savedPass = SessionPrefs.getSavedPassword(activity);
+    if (savedUser == null || savedPass == null) {
+      return false;
+    }
+    if (savedUser.trim().equals("") || savedPass.trim().equals("")) {
+      return false;
+    }
+    ReconnectSession.setCredentials(savedUser, savedPass);
+    return true;
+  }
+
+  private void sendReconnectLogin() {
+    String username = ReconnectSession.getUsername();
+    String password = ReconnectSession.getPassword();
+    if (username == null || password == null) {
+      return;
+    }
+    if (username.trim().equals("") || password.trim().equals("")) {
+      return;
+    }
+    SendMessagesThread.queueMessage("LOGIN", MessageCodes.getRequest(), username + "\n" + password);
+  }
+
+  private boolean handleReconnectHandshakeMessage(String message) {
+    HandelMessage handshakeMessage = new HandelMessage(message);
+    String name = handshakeMessage.getName();
+    if (name == null) {
+      return true;
+    }
+    String upperName = name.toUpperCase();
+    if (upperName.equals("GENERATOR")) {
+      try {
+        BigInteger g = new BigInteger(handshakeMessage.getData());
+        BigInteger score = g.pow(reconnectSecret).mod(DH_P);
+        new Thread(new SendMessagesThread("SCORE", MessageCodes.getRequest(), score.toString()))
+            .start();
+      } catch (Exception ignored) {
+      }
+      return true;
+    }
+    if (upperName.equals("SCORE")) {
+      try {
+        BigInteger serverScore = new BigInteger(handshakeMessage.getData());
+        BigInteger aesKey = serverScore.pow(reconnectSecret).mod(DH_P);
+        MySocket.setAESkey(bigIntNumToBytes(aesKey));
+      } catch (Exception ignored) {
+      }
+      reconnectingHandshake = false;
+      sendReconnectLogin();
+      return true;
+    }
+    return true;
+  }
+
+  private void handleInactivityTimeout() {
+    ClientLogger.log(
+        "ReceiveMessagesThread",
+        "Disconnecting due to inactivity timeout (" + MySocket.INACTIVITY_TIMEOUT_MS + " ms)");
+    MySocket.disconnect();
+    if (activity != null) {
+      Intent goSplash = new Intent(activity.getApplicationContext(), SplashActivity.class);
+      goSplash.putExtra("LostConnection", true);
+      activity.startActivity(goSplash);
+    }
+  }
+}
 
 interface ReceiveMessagesListener {
-    /**
-     * this function will be called by the Activity when a new message received
-     *
-     * @param mes      the new message
-     * @param activity the current activity (this)
-     */
-    void messageReceived(String mes, Activity activity);
+  /**
+   * this function will be called by the Activity when a new message received
+   *
+   * @param mes the new message
+   * @param activity the current activity (this)
+   */
+  void messageReceived(String mes, Activity activity);
 }
-
 
 class SendMessagesThread implements Runnable {
-    private String message;
+  private static final ExecutorService sendExecutor = Executors.newSingleThreadExecutor();
+  private static final Object sendLock = new Object();
+  private String message;
 
-    public SendMessagesThread(String name, String type, String data) {
-        this.message = MySocket.buildMessage(name, type, data);
-    }
+  public static void queueMessage(String name, String type, String data) {
+    String outbound = MySocket.buildMessage(name, type, data);
+    queueRawMessage(outbound);
+  }
 
-    public SendMessagesThread(String name, String type) {
-        this.message = MySocket.buildMessage(name, type, "");
-    }
+  public static void queueMessage(String name, String type) {
+    queueMessage(name, type, "");
+  }
 
-    @Override
-    public void run() {
-        MySocket.getOutput().write(message);
-        MySocket.getOutput().flush();
-    }
+  private static void queueRawMessage(String outbound) {
+    sendExecutor.execute(
+        () -> {
+          ClientLogger.log("SendMessagesThread", "Sending message bytes=" + outbound.length());
+          if (MySocket.getOutput() == null) {
+            ClientLogger.logError(
+                "SendMessagesThread", "Output stream is null; dropping message", null);
+            return;
+          }
+          synchronized (sendLock) {
+            MySocket.getOutput().write(outbound);
+            MySocket.getOutput().flush();
+            MySocket.markActivity();
+          }
+        });
+  }
+
+  public SendMessagesThread(String name, String type, String data) {
+    this.message = MySocket.buildMessage(name, type, data);
+  }
+
+  public SendMessagesThread(String name, String type) {
+    this.message = MySocket.buildMessage(name, type, "");
+  }
+
+  @Override
+  public void run() {
+    queueRawMessage(message);
+  }
 }
-
-

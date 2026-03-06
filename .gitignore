@@ -1,4 +1,5 @@
 PCloud Server/log.txt
+log.txt
 
 # IDE
 **/.idea/
@@ -6,6 +7,28 @@ PCloud Server/log.txt
 # Python cache/artifacts
 **/__pycache__/
 *.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.cache/
+**/.preview_cache/
 
 # Local runtime data
 PCloud Server/PCloudServerDB.db
+
+# Android client build/cache artifacts
+PCloud Client/.gradle/
+PCloud Client/build/
+PCloud Client/app/build/
+PCloud Client/app/captures/
+PCloud Client/app/.cxx/
+PCloud Client/app/.externalNativeBuild/
+**/build/
+**/captures/
+**/.cxx/
+**/.externalNativeBuild/
+**/.gradle/
+
+# Logs and temp output
+*.log
+*.tmp

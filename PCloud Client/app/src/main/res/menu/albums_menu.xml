@@ -17,4 +17,25 @@
     <item
         android:id="@+id/aboutAlbumsMenuItem"
         android:title="@string/about" />
+
+    <item
+        android:id="@+id/deleteAlbumsMenuItem"
+        android:icon="@android:drawable/ic_menu_delete"
+        android:title="@string/delete"
+        android:visible="false"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/renameAlbumMenuItem"
+        android:icon="@android:drawable/ic_menu_edit"
+        android:title="@string/rename_album"
+        android:visible="false"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/searchAlbumsMenuItem"
+        android:icon="@android:drawable/ic_menu_search"
+        android:title="@string/search"
+        app:actionViewClass="androidx.appcompat.widget.SearchView"
+        app:showAsAction="always|collapseActionView" />
 </menu>

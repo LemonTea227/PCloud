@@ -1,139 +1,169 @@
 package com.example.pcloud;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
-import android.util.Log;
 import android.widget.Toast;
-
 import androidx.appcompat.app.AppCompatActivity;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import androidx.core.app.ActivityCompat;
 import java.math.BigInteger;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Random;
 
 public class SplashActivity extends AppCompatActivity implements ReceiveMessagesListener {
-    int myNum; // my num for diffie hellman protocol
-    BigInteger P = new BigInteger("286134470859861285423767856156329902081"); // a prime number diffie hellman protocol
-    BigInteger G = null; // the generator of p
+  private static final int REQUEST_NOTIFICATIONS_PERMISSION = 8101;
+  int myNum; // my num for diffie hellman protocol
+  BigInteger P =
+      new BigInteger(
+          "286134470859861285423767856156329902081"); // a prime number diffie hellman protocol
+  BigInteger G = null; // the generator of p
+  private boolean scoreSent = false;
+  private boolean handshakeComplete = false;
+  private boolean autoLoginAttempt = false;
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_splash);
+  @Override
+  protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    setContentView(R.layout.activity_splash);
+    ClientLogger.init(getApplicationContext());
+    ClientLogger.installCrashHandler(getApplicationContext());
+    ClientLogger.log("SplashActivity", "Splash started and crash logger initialized");
+    SessionDataCache.clearAll();
+    requestNotificationsPermissionIfNeeded();
 
-        if (getIntent().hasExtra("LostConnection")) {
-            if (Objects.requireNonNull(getIntent().getExtras()).getBoolean("LostConnection")) {
-                Toast.makeText(this, getResources().getString(R.string.lost_connection), Toast.LENGTH_SHORT).show();
-            }
-        }
+    if (getIntent().hasExtra("LostConnection")) {
+      if (Objects.requireNonNull(getIntent().getExtras()).getBoolean("LostConnection")) {
+        Toast.makeText(this, getResources().getString(R.string.lost_connection), Toast.LENGTH_SHORT)
+            .show();
+      }
+    }
 
-        setTitle("");
+    setTitle("");
 
-        ReceiveMessagesThread.setActivity(this);
-        ReceiveMessagesThread.setListener(SplashActivity.this);
+    ReceiveMessagesThread.setActivity(this);
+    ReceiveMessagesThread.setListener(SplashActivity.this);
 
-        new Thread(new ConnectionThread()).start();
-        myNum = new Random().nextInt(20302) + 1;
+    new Thread(new ConnectionThread()).start();
+    myNum = new Random().nextInt(20302) + 1;
 
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                while (MySocket.getInput() == null);
+    new Thread(
+            new Runnable() {
+              @Override
+              public void run() {
+                while (MySocket.getInput() == null)
+                  ;
                 new Thread(new ReceiveMessagesThread()).start();
-//                while(G == null);
-//                BigInteger score = G.pow(myNum).mod(P);
-//                new Thread(new SendMessagesThread("SCORE", MessageCodes.getRequest(), score.toString())).start();
-                Intent goLogin = new Intent(getApplicationContext(), LoginActivity.class);
-                MySocket.setClosed(true);
-                startActivity(goLogin);
+                ClientLogger.log(
+                    "SplashActivity", "Socket connected, waiting for handshake messages");
+              }
+            })
+        .start();
+  }
 
-            }
-        }).start();
+  private void requestNotificationsPermissionIfNeeded() {
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
+      return;
     }
+    if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+        == PackageManager.PERMISSION_GRANTED) {
+      return;
+    }
+    ActivityCompat.requestPermissions(
+        this,
+        new String[] {Manifest.permission.POST_NOTIFICATIONS},
+        REQUEST_NOTIFICATIONS_PERMISSION);
+  }
 
-    /**
-     * converting BigInteger num to bytes Array of AES key
-     *
-     * @param num the num we want to convert
-     * @return bytes Array of AES key
-     */
-    private byte[] bigIntNumToBytes(BigInteger num) {
-        byte[] bytes = new byte[16];
-        for (int i = bytes.length - 1; i >= 0; i--) {
-            byte newNum = (byte) num.mod(new BigInteger("256")).intValue();
-            num = num.divide(new BigInteger("256"));
-            bytes[i] = newNum;
+  /**
+   * converting BigInteger num to bytes Array of AES key
+   *
+   * @param num the num we want to convert
+   * @return bytes Array of AES key
+   */
+  private byte[] bigIntNumToBytes(BigInteger num) {
+    byte[] bytes = new byte[16];
+    for (int i = bytes.length - 1; i >= 0; i--) {
+      byte newNum = (byte) num.mod(new BigInteger("256")).intValue();
+      num = num.divide(new BigInteger("256"));
+      bytes[i] = newNum;
+    }
+    return bytes;
+  }
+
+  @Override
+  public void messageReceived(String mes, Activity activity) {
+    HandelMessage splashMassage = new HandelMessage(mes);
+
+    if (splashMassage.getName().toUpperCase(Locale.ROOT).equals("SCORE")) {
+      BigInteger serverScore = new BigInteger(splashMassage.getData());
+      BigInteger aesKey = serverScore.pow(myNum).mod(P);
+
+      byte[] AESKey = bigIntNumToBytes(aesKey);
+      MySocket.setAESkey(AESKey);
+      handshakeComplete = true;
+      ClientLogger.log("SplashActivity", "Handshake completed and AES key set");
+
+      if (SessionPrefs.shouldKeepLoggedIn(this)) {
+        String savedUsername = SessionPrefs.getSavedUsername(this);
+        String savedPassword = SessionPrefs.getSavedPassword(this);
+        if (!savedUsername.isEmpty() && !savedPassword.isEmpty()) {
+          autoLoginAttempt = true;
+          ClientLogger.log("SplashActivity", "Attempting auto login for saved user");
+          new Thread(
+                  new SendMessagesThread(
+                      "LOGIN", MessageCodes.getRequest(), savedUsername + "\n" + savedPassword))
+              .start();
+          return;
         }
-        return bytes;
+      }
+
+      Intent goLogin = new Intent(getApplicationContext(), LoginActivity.class);
+      startActivity(goLogin);
+    } else if (splashMassage.getName().toUpperCase(Locale.ROOT).equals("GENERATOR")) {
+      G = new BigInteger(splashMassage.getData());
+      if (!scoreSent) {
+        BigInteger score = G.pow(myNum).mod(P);
+        ClientLogger.log("SplashActivity", "Received generator, sending SCORE");
+        new Thread(new SendMessagesThread("SCORE", MessageCodes.getRequest(), score.toString()))
+            .start();
+        scoreSent = true;
+      }
+    } else if (splashMassage.getName().toUpperCase(Locale.ROOT).equals("LOGIN")
+        && autoLoginAttempt
+        && handshakeComplete) {
+      if (splashMassage.getType().equals(MessageCodes.getConfirm())) {
+        new Thread(new SendMessagesThread("ALBUMS", MessageCodes.getRequest())).start();
+      } else {
+        ClientLogger.log("SplashActivity", "Auto login failed, opening login page");
+        Intent goLogin = new Intent(getApplicationContext(), LoginActivity.class);
+        startActivity(goLogin);
+      }
+    } else if (splashMassage.getName().toUpperCase(Locale.ROOT).equals("ALBUMS")
+        && autoLoginAttempt
+        && handshakeComplete) {
+      if (splashMassage.getType().equals(MessageCodes.getConfirm())) {
+        Intent goMain = new Intent(getApplicationContext(), MainActivity.class);
+        goMain.putExtra("albums", splashMassage.getData());
+        startActivity(goMain);
+      }
     }
-
-    @Override
-    public void messageReceived(String mes, Activity activity) {
-        HandelMessage splashMassage = new HandelMessage(mes);
-
-        if (splashMassage.getName().toUpperCase().equals("SCORE")) {
-            BigInteger serverScore = new BigInteger(splashMassage.getData());
-            BigInteger aesKey = serverScore.pow(myNum).mod(P);
-
-            byte[] AESKey = bigIntNumToBytes(aesKey);
-            MySocket.setAESkey(AESKey);
-
-//            File sessionFile = new File(getFilesDir(), "session.txt");
-//            if (sessionFile.exists()) {
-//                String session = "";
-//                try {
-//                    FileInputStream sessionFileInput = new FileInputStream(sessionFile);
-//
-//                    byte[] readBuffer = new byte[(int) sessionFile.length()];
-//                    sessionFileInput.read(readBuffer);
-//                    session = new String(readBuffer);
-//                    if (!session.equals("")) {
-//                        new Thread(new SendMessagesThread("SESSION", new String[0], session)).start();
-//                    } else {
-//                        Intent goLogin = new Intent(getApplicationContext(), LoginActivity.class);
-//                        MySocket.setClosed(true);
-//                        startActivity(goLogin);
-//                    }
-//                } catch (FileNotFoundException e) {
-//                    Log.e("login activity", "File not found: " + e.toString());
-//                    Intent goLogin = new Intent(getApplicationContext(), LoginActivity.class);
-//                    MySocket.setClosed(true);
-//                    startActivity(goLogin);
-//                } catch (IOException e) {
-//                    Log.e("login activity", "Can not read file: " + e.toString());
-//                    Intent goLogin = new Intent(getApplicationContext(), LoginActivity.class);
-//                    MySocket.setClosed(true);
-//                    startActivity(goLogin);
-//                }
-
-
-//            } else {
-            Intent goLogin = new Intent(getApplicationContext(), LoginActivity.class);
-            MySocket.setClosed(true);
-            startActivity(goLogin);
-//            }
-        } else if (splashMassage.getName().toUpperCase().equals("GENERATOR")) {
-            G = new BigInteger(splashMassage.getData());
-        }
-//        } else if (splashMassage.getName().toUpperCase().equals("SESSION")) {
-//            if (splashMassage.getType().equals(MessageCodes.getConfirm())) {
-//                new Thread(new SendMessagesThread("HOME", new String[0], "")).start();
-//            } else if (splashMassage.getType().equals(MessageCodes.getSessionError())) {
-//                Intent goLogin = new Intent(getApplicationContext(), LoginActivity.class);
-//                MySocket.setClosed(true);
-//                startActivity(goLogin);
-//            }
-//        } else if (splashMassage.getType().equals("HOME")) {
-//            MySocket.setFullName(splashMassage.getHeader("full_name"));
-//            Intent homePage = new Intent(getApplicationContext(), MainPageActivity.class);
-//            homePage.putExtra("HOME", splashMassage.getData());
-//            MySocket.setClosed(true);
-//            startActivity(homePage);
-//        }
-    }
+    //        } else if (splashMassage.getName().toUpperCase().equals("SESSION")) {
+    //            if (splashMassage.getType().equals(MessageCodes.getConfirm())) {
+    //                new Thread(new SendMessagesThread("HOME", new String[0], "")).start();
+    //            } else if (splashMassage.getType().equals(MessageCodes.getSessionError())) {
+    //                Intent goLogin = new Intent(getApplicationContext(), LoginActivity.class);
+    //                MySocket.setClosed(true);
+    //                startActivity(goLogin);
+    //            }
+    //        } else if (splashMassage.getType().equals("HOME")) {
+    //            MySocket.setFullName(splashMassage.getHeader("full_name"));
+    //            Intent homePage = new Intent(getApplicationContext(), MainPageActivity.class);
+    //            homePage.putExtra("HOME", splashMassage.getData());
+    //            MySocket.setClosed(true);
+    //            startActivity(homePage);
+    //        }
+  }
 }

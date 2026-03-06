@@ -1,0 +1,343 @@
+param(
+    [switch]$SkipClient,
+    [switch]$BackgroundServer,
+    [switch]$SkipInstall,
+    [switch]$AutoDetectPhoneHost,
+    [string]$ServerHost = "10.0.2.2",
+    [int]$ServerPort = 22703
+)
+
+$ErrorActionPreference = "Stop"
+$repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $repoRoot "pcloud-helpers.ps1")
+$serverDir = Join-Path $repoRoot "PCloud Server"
+$clientDir = Join-Path $repoRoot "PCloud Client"
+$socketFile = Join-Path $clientDir "app/src/main/java/com/example/pcloud/MySocket.java"
+$gradlePropertiesFile = Join-Path $clientDir "gradle.properties"
+
+function Ensure-Command([string]$name) {
+    if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
+        throw "Required command '$name' was not found in PATH."
+    }
+}
+
+function Stop-StalePCloudServers {
+    try {
+        $stale = Get-CimInstance Win32_Process -ErrorAction Stop |
+            Where-Object { $_.Name -eq 'python.exe' -and $_.CommandLine -match 'pcloud_server\.py' }
+        foreach ($proc in $stale) {
+            if ($proc.ProcessId) {
+                Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+                Write-Host "Stopped stale server process PID $($proc.ProcessId)."
+            }
+        }
+    } catch {
+        Write-Warning "Could not query for stale PCloud server processes: $($_.Exception.Message)"
+    }
+}
+
+Initialize-JavaHome -GradlePropertiesFile $gradlePropertiesFile
+
+function Wait-ForAndroidBoot([string]$adbPath, [int]$timeoutSeconds = 120) {
+    if (-not $adbPath) {
+        return $false
+    }
+
+    $attempts = [Math]::Ceiling($timeoutSeconds / 2)
+    for ($i = 0; $i -lt $attempts; $i++) {
+        try {
+            $boot = (& $adbPath shell getprop sys.boot_completed 2>$null).Trim()
+        } catch {
+            Start-Sleep -Seconds 2
+            continue
+        }
+        if ($boot -eq "1") {
+            return $true
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    return $false
+}
+
+function Test-AndroidSystemReady([string]$adbPath) {
+    if (-not $adbPath) { return $false }
+    try {
+        $boot = (& $adbPath shell getprop sys.boot_completed 2>$null).Trim()
+        if ($boot -ne "1") { return $false }
+        $activitySvc = (& $adbPath shell service check activity 2>$null)
+        if (-not ($activitySvc -match "found")) { return $false }
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Wait-ForAndroidSystemReady([string]$adbPath, [int]$timeoutSeconds = 180) {
+    if (-not $adbPath) { return $false }
+    $attempts = [Math]::Ceiling($timeoutSeconds / 2)
+    for ($i = 0; $i -lt $attempts; $i++) {
+        if (Test-AndroidSystemReady -adbPath $adbPath) {
+            return $true
+        }
+        Start-Sleep -Seconds 2
+    }
+    return $false
+}
+
+function Install-DebugApkWithRetry([string]$adbPath) {
+    $installSucceeded = $false
+    for ($attempt = 1; $attempt -le 2; $attempt++) {
+        if ($adbPath) {
+            & $adbPath start-server | Out-Null
+            $null = Wait-ForAndroidSystemReady -adbPath $adbPath -timeoutSeconds 180
+        }
+        .\gradlew.bat installDebug
+        if ($LASTEXITCODE -eq 0) {
+            $installSucceeded = $true
+            break
+        }
+        Write-Warning "installDebug failed (attempt $attempt). Retrying after adb reconnect..."
+        if ($adbPath) {
+            & $adbPath kill-server | Out-Null
+            & $adbPath start-server | Out-Null
+            Start-Sleep -Seconds 2
+        }
+    }
+
+    if (-not $installSucceeded) {
+        Write-Warning "Falling back to assembleDebug because installDebug kept failing."
+        .\gradlew.bat assembleDebug
+        if ($LASTEXITCODE -ne 0) {
+            throw "assembleDebug failed (exit code $LASTEXITCODE)."
+        }
+    }
+}
+
+function Get-EmulatorPath {
+    $emuCmd = Get-Command emulator -ErrorAction SilentlyContinue
+    if ($emuCmd) {
+        return $emuCmd.Source
+    }
+
+    $sdkCandidates = @()
+    if ($env:ANDROID_SDK_ROOT) {
+        $sdkCandidates += $env:ANDROID_SDK_ROOT
+    }
+    $sdkCandidates += (Join-Path $env:LOCALAPPDATA "Android\Sdk")
+
+    foreach ($sdk in $sdkCandidates) {
+        if (-not $sdk) { continue }
+        $emuPath = Join-Path $sdk "emulator\emulator.exe"
+        if (Test-Path $emuPath) {
+            return $emuPath
+        }
+    }
+
+    return $null
+}
+
+function Get-ConnectedDeviceCount([string]$adbPath) {
+    if (-not $adbPath) { return 0 }
+    $lines = & $adbPath devices
+    return @($lines | Select-String -Pattern "\tdevice$").Count
+}
+
+function Get-ConnectedPhysicalDeviceSerial([string]$adbPath) {
+    if (-not $adbPath) { return $null }
+    try {
+        $lines = & $adbPath devices
+        $physical = $lines | Where-Object {
+            $_ -match "\tdevice$" -and $_ -notmatch "^emulator-"
+        } | Select-Object -First 1
+        if (-not $physical) { return $null }
+        return ($physical -split "\t")[0]
+    } catch {
+        return $null
+    }
+}
+
+function Ensure-ClientDevice([string]$adbPath) {
+    if (-not $adbPath) {
+        return $false
+    }
+
+    if ((Get-ConnectedDeviceCount -adbPath $adbPath) -gt 0) {
+        return $true
+    }
+
+    $emulatorPath = Get-EmulatorPath
+    if (-not $emulatorPath) {
+        return $false
+    }
+
+    $avds = & $emulatorPath -list-avds 2>$null
+    if (-not $avds -or $avds.Count -eq 0) {
+        return $false
+    }
+
+    $preferredPatterns = @(
+        "Pixel_8_Pro",
+        "Pixel_8",
+        "Pixel_7_Pro",
+        "Pixel_7",
+        "Pixel_6_Pro",
+        "Pixel_6",
+        "Pixel_5",
+        "Pixel_4_XL"
+    )
+    $selectedAvd = $null
+    foreach ($pattern in $preferredPatterns) {
+        $selectedAvd = $avds | Where-Object { $_ -like "*$pattern*" } | Select-Object -First 1
+        if ($selectedAvd) {
+            break
+        }
+    }
+    if (-not $selectedAvd) {
+        $selectedAvd = $avds | Select-Object -First 1
+    }
+    Write-Host "No connected phone detected. Starting emulator '$selectedAvd'..."
+
+    $snapshotDir = Join-Path $env:USERPROFILE ".android\avd\$selectedAvd.avd\snapshots\default_boot"
+    if (Test-Path $snapshotDir) {
+        try {
+            Remove-Item -Path $snapshotDir -Recurse -Force -ErrorAction Stop
+            Write-Host "Removed incompatible snapshot cache for '$selectedAvd'."
+        } catch {
+            Write-Warning "Could not remove snapshot cache for '$selectedAvd'; continuing with no-snapshot mode."
+        }
+    }
+
+    $emuDir = Split-Path -Parent $emulatorPath
+    Push-Location $emuDir
+    try {
+        Start-Process -FilePath $emulatorPath -ArgumentList "-avd", $selectedAvd, "-no-snapshot-load", "-no-snapshot-save" | Out-Null
+    } finally {
+        Pop-Location
+    }
+
+    & $adbPath start-server | Out-Null
+    return (Wait-ForAndroidBoot -adbPath $adbPath -timeoutSeconds 240)
+}
+
+Write-Host "[1/4] Validating prerequisites..."
+if (-not $SkipClient) {
+    Ensure-Command java
+}
+$pythonExe = Get-Python3Executable -RepoRoot $repoRoot
+if (-not $pythonExe) {
+    throw "Python 3 executable was not found. Install Python 3.10+ or ensure 'py -3' works."
+}
+$adbPath = Get-AdbPath
+
+$resolvedServerHost = $ServerHost
+if (-not $SkipClient -and ($AutoDetectPhoneHost -or -not $PSBoundParameters.ContainsKey('ServerHost'))) {
+    $physicalDevice = Get-ConnectedPhysicalDeviceSerial -adbPath $adbPath
+    if ($physicalDevice) {
+        $lanIp = Get-PreferredLanIPv4
+        if ($lanIp) {
+            $resolvedServerHost = $lanIp
+            Write-Host "Physical device '$physicalDevice' detected. Using LAN host $resolvedServerHost"
+        } else {
+            Write-Warning "Physical device detected but LAN IP auto-detection failed; keeping host $resolvedServerHost"
+        }
+    }
+}
+
+Write-Host "[2/4] Starting server..."
+Stop-StalePCloudServers
+$startServerInBackground = $BackgroundServer -or (-not $SkipClient)
+$serverProcess = $null
+if ($startServerInBackground) {
+    $serverProcess = Start-Process -FilePath $pythonExe -ArgumentList "pcloud_server.py" -WorkingDirectory $serverDir -PassThru
+    Start-Sleep -Seconds 2
+    if ($serverProcess.HasExited) {
+        throw "Server process exited immediately. Check 'PCloud Server' dependencies and Python 3 availability."
+    }
+    Write-Host "Server running in background (PID $($serverProcess.Id)). Use Stop-Process -Id $($serverProcess.Id) to stop it."
+}
+elseif ($SkipClient) {
+    Write-Host "Server starting in foreground. Press Ctrl+C in this terminal to stop it."
+    Push-Location $serverDir
+    try {
+        & $pythonExe "pcloud_server.py"
+    } finally {
+        Pop-Location
+    }
+    exit 0
+}
+
+if (-not $SkipClient) {
+    Write-Host "[3/4] Updating client socket target (host=$resolvedServerHost, port=$ServerPort)..."
+    Set-ClientSocketConfig -File $socketFile -SocketHost $resolvedServerHost -Port $ServerPort
+
+    Write-Host "[4/4] Building/installing Android client..."
+    if (-not (Test-Java11OrNewer)) {
+        throw "Android build requires Java 11+. Please set JAVA_HOME to a JDK 11+ installation."
+    }
+
+    if (-not (Test-AndroidSdk -ClientPath $clientDir)) {
+        throw "Android SDK path is not configured. Set ANDROID_SDK_ROOT or fix sdk.dir in 'PCloud Client/local.properties'."
+    }
+
+    Push-Location $clientDir
+    try {
+        $deviceReady = Ensure-ClientDevice -adbPath $adbPath
+
+        if (-not $SkipInstall) {
+            if ($adbPath) {
+                if ($deviceReady) {
+                    if (Wait-ForAndroidSystemReady -adbPath $adbPath) {
+                        Install-DebugApkWithRetry -adbPath $adbPath
+                    } else {
+                        .\gradlew.bat assembleDebug
+                        if ($LASTEXITCODE -ne 0) { throw "assembleDebug failed (exit code $LASTEXITCODE)." }
+                        Write-Host "Device detected but not fully booted. Built debug APK instead of installing."
+                    }
+                } else {
+                    .\gradlew.bat assembleDebug
+                    if ($LASTEXITCODE -ne 0) { throw "assembleDebug failed (exit code $LASTEXITCODE)." }
+                    Write-Host "No connected phone/emulator available. Built debug APK instead of installing."
+                }
+            } else {
+                .\gradlew.bat assembleDebug
+                if ($LASTEXITCODE -ne 0) { throw "assembleDebug failed (exit code $LASTEXITCODE)." }
+                Write-Host "adb not found; built debug APK instead of installing."
+            }
+        }
+        if ($adbPath) {
+            if ($deviceReady -or (Get-ConnectedDeviceCount -adbPath $adbPath) -gt 0) {
+                if (Wait-ForAndroidSystemReady -adbPath $adbPath) {
+                    $launched = $false
+                    for ($attempt = 1; $attempt -le 3; $attempt++) {
+                        & $adbPath shell am start -n com.example.pcloud/.SplashActivity | Out-Null
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Host "Client launched via adb."
+                            $launched = $true
+                            break
+                        }
+                        Write-Host "Launch command failed (attempt $attempt). Retrying..."
+                        Start-Sleep -Seconds 2
+                        & $adbPath start-server | Out-Null
+                        $null = Wait-ForAndroidSystemReady -adbPath $adbPath -timeoutSeconds 120
+                    }
+                    if (-not $launched) {
+                        Write-Host "Launch command failed. Open the app manually on the emulator."
+                    }
+                } else {
+                    Write-Host "Device not fully booted; launch the app manually when boot completes."
+                }
+            } else {
+                Write-Host "No connected phone/emulator; launch APK manually after connecting a device."
+            }
+        } else {
+            Write-Host "adb not found; launch the app manually after installing APK on a device/emulator."
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
+if ($SkipClient -and $startServerInBackground) {
+    Write-Host "Server started. Client step skipped by request."
+}

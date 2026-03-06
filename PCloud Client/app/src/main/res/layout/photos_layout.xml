@@ -22,6 +22,39 @@
             android:scaleType="fitCenter"
             tools:srcCompat="@tools:sample/avatars" />
 
+            <ImageView
+                android:id="@+id/firstPhotoSelectedIndicator"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_alignParentEnd="true"
+                android:layout_margin="4dp"
+                android:src="@android:drawable/checkbox_on_background"
+                android:visibility="gone" />
+
+            <ImageView
+                android:id="@+id/firstPhotoVideoIndicator"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_centerInParent="true"
+                android:src="@android:drawable/ic_media_play"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/firstPhotoVideoDuration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true"
+                android:layout_alignParentEnd="true"
+                android:layout_margin="4dp"
+                android:paddingStart="4dp"
+                android:paddingTop="1dp"
+                android:paddingEnd="4dp"
+                android:paddingBottom="1dp"
+                android:textColor="@android:color/white"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
     </RelativeLayout>
 
     <RelativeLayout
@@ -38,6 +71,39 @@
             android:scaleType="fitCenter"
             tools:srcCompat="@tools:sample/avatars" />
 
+            <ImageView
+                android:id="@+id/secondPhotoSelectedIndicator"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_alignParentEnd="true"
+                android:layout_margin="4dp"
+                android:src="@android:drawable/checkbox_on_background"
+                android:visibility="gone" />
+
+            <ImageView
+                android:id="@+id/secondPhotoVideoIndicator"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_centerInParent="true"
+                android:src="@android:drawable/ic_media_play"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/secondPhotoVideoDuration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true"
+                android:layout_alignParentEnd="true"
+                android:layout_margin="4dp"
+                android:paddingStart="4dp"
+                android:paddingTop="1dp"
+                android:paddingEnd="4dp"
+                android:paddingBottom="1dp"
+                android:textColor="@android:color/white"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
     </RelativeLayout>
 
     <RelativeLayout
@@ -53,6 +119,39 @@
             android:background="@null"
             android:scaleType="fitCenter"
             tools:srcCompat="@tools:sample/avatars" />
+
+            <ImageView
+                android:id="@+id/thirdPhotoSelectedIndicator"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_alignParentEnd="true"
+                android:layout_margin="4dp"
+                android:src="@android:drawable/checkbox_on_background"
+                android:visibility="gone" />
+
+            <ImageView
+                android:id="@+id/thirdPhotoVideoIndicator"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_centerInParent="true"
+                android:src="@android:drawable/ic_media_play"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/thirdPhotoVideoDuration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true"
+                android:layout_alignParentEnd="true"
+                android:layout_margin="4dp"
+                android:paddingStart="4dp"
+                android:paddingTop="1dp"
+                android:paddingEnd="4dp"
+                android:paddingBottom="1dp"
+                android:textColor="@android:color/white"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
     </RelativeLayout>
 
     <RelativeLayout
@@ -67,6 +166,39 @@
             android:background="@null"
             android:scaleType="fitCenter"
             tools:srcCompat="@tools:sample/avatars" />
+
+        <ImageView
+            android:id="@+id/fourthPhotoSelectedIndicator"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_alignParentEnd="true"
+            android:layout_margin="4dp"
+            android:src="@android:drawable/checkbox_on_background"
+            android:visibility="gone" />
+
+        <ImageView
+            android:id="@+id/fourthPhotoVideoIndicator"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_centerInParent="true"
+            android:src="@android:drawable/ic_media_play"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/fourthPhotoVideoDuration"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentEnd="true"
+            android:layout_margin="4dp"
+            android:paddingStart="4dp"
+            android:paddingTop="1dp"
+            android:paddingEnd="4dp"
+            android:paddingBottom="1dp"
+            android:textColor="@android:color/white"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
     </RelativeLayout>
 
 </LinearLayout>

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name" translatable="false">PCloud</string>
     <string name="username">שם משתמש</string>
     <string name="password">סיסמה</string>
     <string name="login">התחבר</string>
@@ -27,10 +28,47 @@
     <string name="sad_face_text">):</string>
     <string name="album_name">שם האלבום</string>
     <string name="create_album_text">צור אלבום</string>
+    <string name="rename_album">שנה שם</string>
+    <string name="rename_album_text">שנה שם אלבום</string>
+    <string name="rename_album_error">לא ניתן לשנות את שם האלבום</string>
+    <string name="new_album_name">שם אלבום חדש</string>
     <string name="album_name_invalid_format">שם האלבום חייב להיות מורכב מאותיות באנגלית, מספרים ותווים מיוחדים בלבד</string>
     <string name="photos_error">לא היה ניתן להשיג את התמונות שלך</string>
     <string name="add_photo_text">הוסף תמונה</string>
     <string name="upload_photo_error">לא היה ניתן להעלות את התמונה שלך</string>
     <string name="photo_error">לא היה ניתן להשיג את התמונה שלך</string>
     <string name="lost_connection">אבד הקשר לשרת מנסה להתחבר…</string>
+    <string name="keep_me_logged_in">השאר אותי מחובר</string>
+    <string name="client_log_path">נתיב קובץ לוג לקוח</string>
+    <string name="client_log_path_value">נתיב קובץ לוג לקוח: %1$s</string>
+    <string name="search">חפש</string>
+    <string name="search_albums">חפש אלבומים</string>
+    <string name="select">בחר</string>
+    <string name="cancel_selection">בטל בחירה</string>
+    <string name="share">שתף</string>
+    <string name="delete">מחק</string>
+    <string name="zoom_in">הורד מקור</string>
+    <string name="zoom_out">הקטן</string>
+    <string name="reset_zoom">אפס זום</string>
+    <string name="no_photos_selected">לא נבחרו תמונות</string>
+    <string name="photos_deleted">התמונות נמחקו</string>
+    <string name="delete_photo_error">לא ניתן למחוק את התמונות שנבחרו</string>
+    <string name="share_error">לא ניתן לשתף את התמונות שנבחרו</string>
+    <string name="delete_album_error">לא ניתן למחוק את האלבומים שנבחרו</string>
+    <string name="albums_deleted">האלבומים נמחקו</string>
+    <string name="delete_album_confirm_title">מחיקת אלבום</string>
+    <string name="delete_albums_confirm_title">מחיקת אלבומים</string>
+    <string name="delete_album_confirm_message">האלבום אינו ריק. למחוק אותו?</string>
+    <string name="delete_albums_confirm_message">למחוק את האלבומים שנבחרו?</string>
+    <string name="confirm">אישור</string>
+    <string name="cancel">ביטול</string>
+    <string name="undo">בטל</string>
+    <string name="redo">שחזר</string>
+    <string name="loading_photo">טוען תמונה</string>
+    <string name="download_original">הורד מקור</string>
+    <string name="downloading_photo">מוריד תמונה מקורית…</string>
+    <string name="download_complete">התמונה המקורית נטענה</string>
+    <string name="refreshing_from_server">מרענן תמונות מהשרת…</string>
+    <string name="loading_media">טוען מדיה…</string>
+    <string name="video_preview">תצוגה מקדימה לסרטון</string>
 </resources>
