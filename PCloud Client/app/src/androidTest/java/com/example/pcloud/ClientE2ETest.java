@@ -224,6 +224,35 @@ public class ClientE2ETest {
   }
 
   @Test
+  public void e2e_album_rename_from_single_selection() {
+    server.seedManyAlbums(1);
+    launchSplashAndWaitForEntry();
+    loginAsDefaultUser();
+
+    waitForView(withId(R.id.albumMainRecyclerView), 12000);
+    onView(withId(R.id.albumMainRecyclerView))
+        .perform(RecyclerViewActions.actionOnItem(hasDescendant(withText("album_000")), longClick()));
+
+    clickMenuItem(R.id.renameAlbumMenuItem, R.string.rename_album);
+    waitForView(withId(R.id.albumNameRenameEditText), 10000);
+    onView(withId(R.id.albumNameRenameEditText))
+        .perform(replaceText("album_renamed"), closeSoftKeyboard());
+    onView(withId(R.id.renameAlbumButton)).perform(click());
+
+    waitUntil(
+        () -> {
+          try {
+            onView(withId(R.id.albumMainRecyclerView))
+                .perform(RecyclerViewActions.scrollTo(hasDescendant(withText("album_renamed"))));
+            return true;
+          } catch (Throwable ignored) {
+            return false;
+          }
+        },
+        15000);
+  }
+
+  @Test
   public void e2e_multi_select_delete_and_viewer_zoom_delete() {
     String albumName = "qol_album";
     server.seedAlbumWithLargePhotos(albumName, 4, 800, 800);

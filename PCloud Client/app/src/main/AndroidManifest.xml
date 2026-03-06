@@ -33,6 +33,9 @@
             android:name=".CreateAlbumActivity"
             android:screenOrientation="portrait" />
         <activity
+            android:name=".RenameAlbumActivity"
+            android:screenOrientation="portrait" />
+        <activity
             android:name=".MainActivity"
             android:screenOrientation="portrait" />
         <activity

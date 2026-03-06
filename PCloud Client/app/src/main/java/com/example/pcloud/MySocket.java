@@ -239,6 +239,8 @@ class MessageCodes {
 
   private static String DelPhotosError = "208";
 
+  private static String RenameAlbumError = "209";
+
   private static String AccessDenied = "3";
 
   public static String getRequest() {
@@ -283,6 +285,10 @@ class MessageCodes {
 
   public static String getDelPhotosError() {
     return DelPhotosError;
+  }
+
+  public static String getRenameAlbumError() {
+    return RenameAlbumError;
   }
 
   public static String getAccessDenied() {

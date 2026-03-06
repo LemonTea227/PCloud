@@ -13,6 +13,8 @@ public final class SessionDataCache {
       new LinkedHashMap<>();
   private static final Map<String, LinkedHashSet<String>> pendingDeletedPhotoNamesByAlbum =
       new LinkedHashMap<>();
+    private static final Map<String, LinkedHashMap<String, String>> albumVideoDurations =
+      new LinkedHashMap<>();
 
   private SessionDataCache() {}
 
@@ -20,6 +22,7 @@ public final class SessionDataCache {
     albumNames.clear();
     albumPreviewBitmaps.clear();
     pendingDeletedPhotoNamesByAlbum.clear();
+    albumVideoDurations.clear();
   }
 
   public static synchronized List<String> getAlbumNames() {
@@ -53,13 +56,16 @@ public final class SessionDataCache {
     albumNames.remove(normalized);
     albumPreviewBitmaps.remove(normalized);
     pendingDeletedPhotoNamesByAlbum.remove(normalized);
+    albumVideoDurations.remove(normalized);
   }
 
   public static synchronized void clearAlbumPreviewCache(String albumName) {
     if (albumName == null) {
       return;
     }
-    albumPreviewBitmaps.remove(albumName.trim());
+    String normalizedAlbum = albumName.trim();
+    albumPreviewBitmaps.remove(normalizedAlbum);
+    albumVideoDurations.remove(normalizedAlbum);
   }
 
   public static synchronized LinkedHashMap<String, Bitmap> getAlbumPreviewBitmaps(
@@ -103,15 +109,53 @@ public final class SessionDataCache {
     if (albumName == null || photoNames == null || photoNames.isEmpty()) {
       return;
     }
-    LinkedHashMap<String, Bitmap> cached = albumPreviewBitmaps.get(albumName.trim());
-    if (cached == null) {
-      return;
-    }
+    String normalizedAlbum = albumName.trim();
+    LinkedHashMap<String, Bitmap> cached = albumPreviewBitmaps.get(normalizedAlbum);
+    LinkedHashMap<String, String> durations = albumVideoDurations.get(normalizedAlbum);
     for (String photoName : photoNames) {
       if (photoName != null) {
-        cached.remove(photoName.trim());
+        if (cached != null) {
+          cached.remove(photoName.trim());
+        }
+        if (durations != null) {
+          durations.remove(photoName.trim());
+        }
       }
     }
+  }
+
+  public static synchronized void putAlbumPhotoVideoDuration(
+      String albumName, String photoName, String durationLabel) {
+    if (albumName == null
+        || albumName.trim().isEmpty()
+        || photoName == null
+        || photoName.trim().isEmpty()) {
+      return;
+    }
+    String normalizedAlbum = albumName.trim();
+    String normalizedPhoto = photoName.trim();
+    LinkedHashMap<String, String> durations = albumVideoDurations.get(normalizedAlbum);
+    if (durations == null) {
+      durations = new LinkedHashMap<>();
+      albumVideoDurations.put(normalizedAlbum, durations);
+    }
+    if (durationLabel == null || durationLabel.trim().isEmpty()) {
+      durations.remove(normalizedPhoto);
+      return;
+    }
+    durations.put(normalizedPhoto, durationLabel.trim());
+  }
+
+  public static synchronized String getAlbumPhotoVideoDuration(String albumName, String photoName) {
+    if (albumName == null || photoName == null) {
+      return "";
+    }
+    LinkedHashMap<String, String> durations = albumVideoDurations.get(albumName.trim());
+    if (durations == null) {
+      return "";
+    }
+    String value = durations.get(photoName.trim());
+    return value == null ? "" : value;
   }
 
   public static synchronized void markAlbumPhotosPendingDeletion(

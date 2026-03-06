@@ -136,6 +136,7 @@ public class LoginActivity extends AppCompatActivity implements ReceiveMessagesL
     HandelMessage message = new HandelMessage(mes);
     if (message.getName().equals("LOGIN")) {
       if (message.getType().equals(MessageCodes.getConfirm())) {
+        ReconnectSession.setCredentials(pendingUsername, pendingPassword);
         SessionPrefs.setKeepLoggedIn(this, pendingRememberChoice);
         if (pendingRememberChoice) {
           SessionPrefs.saveCredentials(this, pendingUsername, pendingPassword);

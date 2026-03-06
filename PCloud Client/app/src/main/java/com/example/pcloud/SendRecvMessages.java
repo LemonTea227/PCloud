@@ -187,14 +187,46 @@ class ReceiveMessagesThread implements Runnable {
       reconnectingHandshake = true;
       new ConnectionThread().run();
       boolean connected = MySocket.getInput() != null && MySocket.getOutput() != null;
-      if (!connected) {
+      boolean canReauthenticate = canReauthenticateAfterReconnect();
+      if (!connected || !canReauthenticate) {
         reconnectingHandshake = false;
       }
-      return connected;
+      return connected && canReauthenticate;
     } catch (Exception ex) {
       reconnectingHandshake = false;
       return false;
     }
+  }
+
+  private boolean canReauthenticateAfterReconnect() {
+    if (ReconnectSession.hasCredentials()) {
+      return true;
+    }
+    if (activity == null || !SessionPrefs.shouldKeepLoggedIn(activity)) {
+      return false;
+    }
+    String savedUser = SessionPrefs.getSavedUsername(activity);
+    String savedPass = SessionPrefs.getSavedPassword(activity);
+    if (savedUser == null || savedPass == null) {
+      return false;
+    }
+    if (savedUser.trim().equals("") || savedPass.trim().equals("")) {
+      return false;
+    }
+    ReconnectSession.setCredentials(savedUser, savedPass);
+    return true;
+  }
+
+  private void sendReconnectLogin() {
+    String username = ReconnectSession.getUsername();
+    String password = ReconnectSession.getPassword();
+    if (username == null || password == null) {
+      return;
+    }
+    if (username.trim().equals("") || password.trim().equals("")) {
+      return;
+    }
+    SendMessagesThread.queueMessage("LOGIN", MessageCodes.getRequest(), username + "\n" + password);
   }
 
   private boolean handleReconnectHandshakeMessage(String message) {
@@ -222,6 +254,7 @@ class ReceiveMessagesThread implements Runnable {
       } catch (Exception ignored) {
       }
       reconnectingHandshake = false;
+      sendReconnectLogin();
       return true;
     }
     return true;

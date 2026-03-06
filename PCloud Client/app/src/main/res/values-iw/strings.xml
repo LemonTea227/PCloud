@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name" translatable="false">PCloud</string>
     <string name="username">שם משתמש</string>
     <string name="password">סיסמה</string>
     <string name="login">התחבר</string>
@@ -27,6 +28,10 @@
     <string name="sad_face_text">):</string>
     <string name="album_name">שם האלבום</string>
     <string name="create_album_text">צור אלבום</string>
+    <string name="rename_album">שנה שם</string>
+    <string name="rename_album_text">שנה שם אלבום</string>
+    <string name="rename_album_error">לא ניתן לשנות את שם האלבום</string>
+    <string name="new_album_name">שם אלבום חדש</string>
     <string name="album_name_invalid_format">שם האלבום חייב להיות מורכב מאותיות באנגלית, מספרים ותווים מיוחדים בלבד</string>
     <string name="photos_error">לא היה ניתן להשיג את התמונות שלך</string>
     <string name="add_photo_text">הוסף תמונה</string>
@@ -42,7 +47,7 @@
     <string name="cancel_selection">בטל בחירה</string>
     <string name="share">שתף</string>
     <string name="delete">מחק</string>
-    <string name="zoom_in">הגדל</string>
+    <string name="zoom_in">הורד מקור</string>
     <string name="zoom_out">הקטן</string>
     <string name="reset_zoom">אפס זום</string>
     <string name="no_photos_selected">לא נבחרו תמונות</string>
@@ -64,4 +69,6 @@
     <string name="downloading_photo">מוריד תמונה מקורית…</string>
     <string name="download_complete">התמונה המקורית נטענה</string>
     <string name="refreshing_from_server">מרענן תמונות מהשרת…</string>
+    <string name="loading_media">טוען מדיה…</string>
+    <string name="video_preview">תצוגה מקדימה לסרטון</string>
 </resources>

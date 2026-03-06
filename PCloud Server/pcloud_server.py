@@ -20,9 +20,10 @@ import traceback
 from diffie_hellman import diffie_hellman_server
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageDraw
 except ImportError:
     Image = None
+    ImageDraw = None
 
 IP = "0.0.0.0"
 PORT = 22703
@@ -44,6 +45,7 @@ PHOTOS_ERROR = "205"
 UPLOAD_PHOTO_ERROR = "206"
 PHOTO_ERROR = "207"
 DEL_PHOTOS_ERROR = "208"
+RENAME_ALBUM_ERROR = "209"
 AUTH_REQUIRED_ERROR_BY_MESSAGE = {
     "ALBUMS": ALBUMS_ERROR,
     "NEW_ALBUM": NEW_ALBUM_ERROR,
@@ -54,6 +56,7 @@ AUTH_REQUIRED_ERROR_BY_MESSAGE = {
     "UPLOAD_PHOTO_CHUNK": UPLOAD_PHOTO_ERROR,
     "PHOTO": PHOTO_ERROR,
     "DEL_PHOTOS": DEL_PHOTOS_ERROR,
+    "RENAME_ALBUM": RENAME_ALBUM_ERROR,
 }
 RECV_DEADLINE_SECONDS = 120.0
 RECV_POLL_SECONDS = 1.0
@@ -61,7 +64,28 @@ HANDSHAKE_DEADLINE_SECONDS = 10.0
 PREVIEW_MAX_DIMENSION = 320
 PREVIEW_JPEG_QUALITY = 60
 PREVIEW_CACHE_DIR_NAME = ".preview_cache"
+PREVIEW_CACHE_VERSION = "v2"
 PREVIEW_MAX_ENCODED_LENGTH = 300000
+VIDEO_PREVIEW_SOURCE_MAX_BYTES = 64 * 1024 * 1024
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".3gp", ".mov", ".avi", ".m4v"}
+GIF_EXTENSION = ".gif"
+FALLBACK_PREVIEW_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoMBgR3xKhsAAAAASUVORK5CYII="
+)
+
+
+def is_video_file_name(file_name):
+    if file_name is None:
+        return False
+    _, ext = os.path.splitext(str(file_name).lower())
+    return ext in VIDEO_EXTENSIONS
+
+
+def is_gif_file_name(file_name):
+    if file_name is None:
+        return False
+    _, ext = os.path.splitext(str(file_name).lower())
+    return ext == GIF_EXTENSION
 
 
 def normalize_auth_field(value):
@@ -398,6 +422,15 @@ def del_album_directory(sock, album_name):
         print("Successfully deleted the directory %s" % path)
 
 
+def rename_album_directory(sock, old_album_name, new_album_name):
+    old_path = os.path.join(PATH_TO_FILES, USERS[sock].username, old_album_name)
+    new_path = os.path.join(PATH_TO_FILES, USERS[sock].username, new_album_name)
+    if old_path == new_path:
+        return
+    if os.path.isdir(old_path):
+        os.rename(old_path, new_path)
+
+
 def generate_photos_from_album(sock, album_name):
     """
     this function is responsible for generating a photos message from an album
@@ -430,16 +463,17 @@ def generate_photos_from_album(sock, album_name):
 
     for file_name in sorted(file_names):
         preview_data = get_preview_encoded_for_photo(sock, album_name, file_name, "")
-        if preview_data != "":
-            lst_encode.append(file_name + "~" + preview_data)
+        lst_encode.append(file_name + "~" + preview_data)
     return "\n".join(lst_encode)
 
 
 def get_preview_cache_path(album_path, file_name):
     if isinstance(file_name, bytes):
-        encoded_name = file_name
+        encoded_name = PREVIEW_CACHE_VERSION.encode("utf-8") + b"|" + file_name
     else:
-        encoded_name = str(file_name).encode("utf-8")
+        encoded_name = (
+            PREVIEW_CACHE_VERSION + "|" + str(file_name)
+        ).encode("utf-8")
     digest = hashlib.sha1(encoded_name).hexdigest()
     preview_dir = os.path.join(album_path, PREVIEW_CACHE_DIR_NAME)
     if not os.path.isdir(preview_dir):
@@ -522,7 +556,7 @@ def build_preview_bytes(source_bytes):
     if source_bytes is None:
         return None
     if Image is None:
-        return source_bytes
+        return None
     try:
         with Image.open(io.BytesIO(source_bytes)) as img:
             if img.mode not in ("RGB", "L"):
@@ -542,6 +576,35 @@ def build_preview_bytes(source_bytes):
         return None
 
 
+def build_fallback_preview_bytes(file_name):
+    if Image is None:
+        try:
+            return base64.b64decode(FALLBACK_PREVIEW_PNG_B64)
+        except Exception:
+            return None
+    try:
+        out_width = PREVIEW_MAX_DIMENSION
+        out_height = int(PREVIEW_MAX_DIMENSION * 0.6)
+        canvas = Image.new("RGB", (out_width, out_height), (47, 47, 47))
+        if ImageDraw is not None:
+            drawer = ImageDraw.Draw(canvas)
+            if is_gif_file_name(file_name):
+                badge = "GIF"
+            else:
+                badge = "MEDIA"
+            drawer.text((12, out_height - 30), badge, fill=(255, 255, 255))
+        out_stream = io.BytesIO()
+        canvas.save(
+            out_stream,
+            format="JPEG",
+            quality=PREVIEW_JPEG_QUALITY,
+            optimize=True,
+        )
+        return out_stream.getvalue()
+    except Exception:
+        return None
+
+
 def get_preview_encoded_for_photo(sock, album_name, file_name, file_data=""):
     album_path = os.path.join(PATH_TO_FILES, USERS[sock].username, album_name)
     preview_cache_path = get_preview_cache_path(album_path, file_name)
@@ -550,7 +613,10 @@ def get_preview_encoded_for_photo(sock, album_name, file_name, file_data=""):
         try:
             with open(preview_cache_path, "r") as cache_file:
                 cached = cache_file.read().strip()
-                if cached != "" and len(cached) <= PREVIEW_MAX_ENCODED_LENGTH:
+                if cached != "" and (
+                    is_video_file_name(file_name)
+                    or len(cached) <= PREVIEW_MAX_ENCODED_LENGTH
+                ):
                     return cached
         except IOError:
             pass
@@ -562,6 +628,15 @@ def get_preview_encoded_for_photo(sock, album_name, file_name, file_data=""):
 
     source_bytes = load_source_bytes_for_preview(album_path, file_name, file_data)
     preview_bytes = build_preview_bytes(source_bytes)
+    if (
+        preview_bytes is None
+        and is_video_file_name(file_name)
+        and source_bytes is not None
+        and len(source_bytes) <= VIDEO_PREVIEW_SOURCE_MAX_BYTES
+    ):
+        preview_bytes = source_bytes
+    if preview_bytes is None and (is_video_file_name(file_name) or is_gif_file_name(file_name)):
+        preview_bytes = build_fallback_preview_bytes(file_name)
     if preview_bytes:
         preview_b64_bytes = base64.b64encode(preview_bytes)
         if not isinstance(preview_b64_bytes, str):
@@ -959,6 +1034,74 @@ def receive_handler(sock, recv, aes_key=None):
                 SEND[sock].append(
                     build_message(
                         get_header_from_message(recv, "name"), NEW_ALBUM_ERROR, aes_key=aes_key
+                    )
+                )
+        elif message_name == "RENAME_ALBUM":
+            try:
+                payload = str(message_data).split("\n", 1)
+                if len(payload) < 2:
+                    SEND[sock].append(
+                        build_message(
+                            get_header_from_message(recv, "name"),
+                            RENAME_ALBUM_ERROR,
+                            aes_key=aes_key,
+                        )
+                    )
+                    return
+
+                old_name = payload[0].strip()
+                new_name = payload[1].strip()
+                if old_name == "" or new_name == "":
+                    SEND[sock].append(
+                        build_message(
+                            get_header_from_message(recv, "name"),
+                            RENAME_ALBUM_ERROR,
+                            aes_key=aes_key,
+                        )
+                    )
+                    return
+
+                if old_name == new_name:
+                    SEND[sock].append(
+                        build_message(get_header_from_message(recv, "name"), CONFIRM, aes_key=aes_key)
+                    )
+                    return
+
+                if USERS[sock].get_album_id_by_album_name(old_name) is None:
+                    SEND[sock].append(
+                        build_message(
+                            get_header_from_message(recv, "name"),
+                            RENAME_ALBUM_ERROR,
+                            aes_key=aes_key,
+                        )
+                    )
+                    return
+
+                names = get_albums_names(sock)
+                if new_name in names:
+                    SEND[sock].append(
+                        build_message(
+                            get_header_from_message(recv, "name"),
+                            RENAME_ALBUM_ERROR,
+                            aes_key=aes_key,
+                        )
+                    )
+                    return
+
+                album = pcloud_server_db.Album()
+                album.album_id = USERS[sock].get_album_id_by_album_name(old_name)
+                album.creator_id = USERS[sock].user_id
+                album.album_name = old_name
+                album.change_album_name(new_name)
+                rename_album_directory(sock, old_name, new_name)
+                SEND[sock].append(
+                    build_message(get_header_from_message(recv, "name"), CONFIRM, aes_key=aes_key)
+                )
+            except Exception:
+                traceback.print_exc()
+                SEND[sock].append(
+                    build_message(
+                        get_header_from_message(recv, "name"), RENAME_ALBUM_ERROR, aes_key=aes_key
                     )
                 )
         elif message_name == "DEL_ALBUMS":

@@ -215,6 +215,20 @@ class MockPCloudServer {
       }
       return new ProtocolMessage("NEW_ALBUM", "203", "");
     }
+    if ("RENAME_ALBUM".equals(name)) {
+      String[] parts = request.data == null ? new String[0] : request.data.split("\\n", 2);
+      if (parts.length < 2) {
+        return new ProtocolMessage("RENAME_ALBUM", "209", "");
+      }
+      String oldName = parts[0].trim();
+      String newName = parts[1].trim();
+      if (oldName.isEmpty() || newName.isEmpty() || !albums.containsKey(oldName) || albums.containsKey(newName)) {
+        return new ProtocolMessage("RENAME_ALBUM", "209", "");
+      }
+      LinkedHashMap<String, String> photos = albums.remove(oldName);
+      albums.put(newName, photos == null ? new LinkedHashMap<>() : photos);
+      return new ProtocolMessage("RENAME_ALBUM", "1", "");
+    }
     if ("PHOTOS".equals(name)) {
       String[] payloadLines = request.data == null ? new String[0] : request.data.split("\\n");
       if (payloadLines.length == 0) {

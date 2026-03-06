@@ -157,6 +157,15 @@ public class MainActivity extends AppCompatActivity
       case R.id.deleteAlbumsMenuItem:
         requestDeleteSelectedAlbums();
         return true;
+      case R.id.renameAlbumMenuItem:
+        if (selectedAlbumNames.size() != 1) {
+          return true;
+        }
+        Intent renameIntent = new Intent(getApplicationContext(), RenameAlbumActivity.class);
+        renameIntent.putExtra("old_album_name", selectedAlbumNames.iterator().next());
+        renameIntent.putExtra("albums", buildAlbumsPayloadFromAll());
+        startActivity(renameIntent);
+        return true;
     }
     return super.onOptionsItemSelected(item);
   }
@@ -241,6 +250,7 @@ public class MainActivity extends AppCompatActivity
       }
     }
     adapter.notifyDataSetChanged();
+    refreshSelectionUi();
   }
 
   private String buildAlbumsPayloadFromAll() {
@@ -263,8 +273,11 @@ public class MainActivity extends AppCompatActivity
     MenuItem aboutItem = optionsMenu.findItem(R.id.aboutAlbumsMenuItem);
     MenuItem searchItem = optionsMenu.findItem(R.id.searchAlbumsMenuItem);
     MenuItem deleteItem = optionsMenu.findItem(R.id.deleteAlbumsMenuItem);
+    MenuItem renameItem = optionsMenu.findItem(R.id.renameAlbumMenuItem);
 
     boolean hasSelection = !selectedAlbumNames.isEmpty();
+    boolean canRename = selectedAlbumNames.size() == 1;
+    boolean hasAlbums = allAlbums != null && !allAlbums.isEmpty();
     if (addItem != null) {
       addItem.setVisible(!selectionMode);
     }
@@ -275,11 +288,15 @@ public class MainActivity extends AppCompatActivity
       aboutItem.setVisible(!selectionMode);
     }
     if (searchItem != null) {
-      searchItem.setVisible(!selectionMode);
+      searchItem.setVisible(!selectionMode && hasAlbums);
     }
     if (deleteItem != null) {
-      deleteItem.setVisible(selectionMode);
+      deleteItem.setVisible(selectionMode && hasSelection);
       deleteItem.setEnabled(hasSelection);
+    }
+    if (renameItem != null) {
+      renameItem.setVisible(selectionMode && canRename);
+      renameItem.setEnabled(canRename);
     }
   }
 

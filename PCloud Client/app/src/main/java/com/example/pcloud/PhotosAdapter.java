@@ -6,6 +6,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
@@ -19,6 +20,8 @@ class PhotosAdapter extends RecyclerView.Adapter<PhotosAdapter.PhotosViewHolder>
     boolean isSelectionModeEnabled();
 
     boolean isPhotoSelected(String photoName);
+
+    String getVideoDurationLabel(String photoName);
   }
 
   private ArrayList<PhotosItem> photos;
@@ -61,6 +64,14 @@ class PhotosAdapter extends RecyclerView.Adapter<PhotosAdapter.PhotosViewHolder>
     public ImageView secondPhotoSelectedIndicator;
     public ImageView thirdPhotoSelectedIndicator;
     public ImageView fourthPhotoSelectedIndicator;
+    public ImageView firstPhotoVideoIndicator;
+    public ImageView secondPhotoVideoIndicator;
+    public ImageView thirdPhotoVideoIndicator;
+    public ImageView fourthPhotoVideoIndicator;
+    public TextView firstPhotoVideoDuration;
+    public TextView secondPhotoVideoDuration;
+    public TextView thirdPhotoVideoDuration;
+    public TextView fourthPhotoVideoDuration;
 
     public PhotosViewHolder(@NonNull View itemView) {
       super(itemView);
@@ -72,6 +83,14 @@ class PhotosAdapter extends RecyclerView.Adapter<PhotosAdapter.PhotosViewHolder>
       this.secondPhotoSelectedIndicator = itemView.findViewById(R.id.secondPhotoSelectedIndicator);
       this.thirdPhotoSelectedIndicator = itemView.findViewById(R.id.thirdPhotoSelectedIndicator);
       this.fourthPhotoSelectedIndicator = itemView.findViewById(R.id.fourthPhotoSelectedIndicator);
+      this.firstPhotoVideoIndicator = itemView.findViewById(R.id.firstPhotoVideoIndicator);
+      this.secondPhotoVideoIndicator = itemView.findViewById(R.id.secondPhotoVideoIndicator);
+      this.thirdPhotoVideoIndicator = itemView.findViewById(R.id.thirdPhotoVideoIndicator);
+      this.fourthPhotoVideoIndicator = itemView.findViewById(R.id.fourthPhotoVideoIndicator);
+      this.firstPhotoVideoDuration = itemView.findViewById(R.id.firstPhotoVideoDuration);
+      this.secondPhotoVideoDuration = itemView.findViewById(R.id.secondPhotoVideoDuration);
+      this.thirdPhotoVideoDuration = itemView.findViewById(R.id.thirdPhotoVideoDuration);
+      this.fourthPhotoVideoDuration = itemView.findViewById(R.id.fourthPhotoVideoDuration);
     }
   }
 
@@ -89,33 +108,48 @@ class PhotosAdapter extends RecyclerView.Adapter<PhotosAdapter.PhotosViewHolder>
     bindPhotoButton(
         holder.firstPhotoImageButton,
         holder.firstPhotoSelectedIndicator,
+        holder.firstPhotoVideoIndicator,
+        holder.firstPhotoVideoDuration,
         currentItem.getFirstName(),
         currentItem.getFirstPhotoIcon());
     bindPhotoButton(
         holder.secondPhotoImageButton,
         holder.secondPhotoSelectedIndicator,
+        holder.secondPhotoVideoIndicator,
+        holder.secondPhotoVideoDuration,
         currentItem.getSecondName(),
         currentItem.getSecondPhotoIcon());
     bindPhotoButton(
         holder.thirdPhotoImageButton,
         holder.thirdPhotoSelectedIndicator,
+        holder.thirdPhotoVideoIndicator,
+        holder.thirdPhotoVideoDuration,
         currentItem.getThirdName(),
         currentItem.getThirdPhotoIcon());
     bindPhotoButton(
         holder.fourthPhotoImageButton,
         holder.fourthPhotoSelectedIndicator,
+        holder.fourthPhotoVideoIndicator,
+        holder.fourthPhotoVideoDuration,
         currentItem.getFourtName(),
         currentItem.getFourthPhotoIcon());
   }
 
   private void bindPhotoButton(
-      ImageButton button, ImageView indicator, String photoName, android.graphics.Bitmap bitmap) {
+      ImageButton button,
+      ImageView indicator,
+      ImageView videoIndicator,
+      TextView videoDuration,
+      String photoName,
+      android.graphics.Bitmap bitmap) {
     if (bitmap == null || photoName == null || photoName.equals("")) {
       button.setImageDrawable(null);
       button.setVisibility(View.INVISIBLE);
       button.setOnClickListener(null);
       button.setOnLongClickListener(null);
       indicator.setVisibility(View.GONE);
+      videoIndicator.setVisibility(View.GONE);
+      videoDuration.setVisibility(View.GONE);
       return;
     }
 
@@ -123,6 +157,20 @@ class PhotosAdapter extends RecyclerView.Adapter<PhotosAdapter.PhotosViewHolder>
 
     button.setVisibility(View.VISIBLE);
     button.setImageBitmap(bitmap);
+    boolean isVideo = MediaTypeUtil.isVideoFileName(photoName);
+    boolean isGif = MediaTypeUtil.isGifFileName(photoName);
+    videoIndicator.setVisibility(isVideo ? View.VISIBLE : View.GONE);
+    String durationLabel =
+        interactionListener == null ? "" : interactionListener.getVideoDurationLabel(photoName);
+    if (isVideo && durationLabel != null && !durationLabel.trim().equals("")) {
+      videoDuration.setText(durationLabel);
+      videoDuration.setVisibility(View.VISIBLE);
+    } else if (isGif) {
+      videoDuration.setText("GIF");
+      videoDuration.setVisibility(View.VISIBLE);
+    } else {
+      videoDuration.setVisibility(View.GONE);
+    }
     boolean selected =
         interactionListener != null && interactionListener.isPhotoSelected(photoName);
     button.setAlpha(selected ? 0.55f : (isLoadingPlaceholder ? 0.35f : 1.0f));

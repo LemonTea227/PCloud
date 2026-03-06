@@ -6,6 +6,8 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.media.MediaDataSource;
+import android.media.MediaMetadataRetriever;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -13,6 +15,7 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
+import android.webkit.MimeTypeMap;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -34,6 +37,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -52,6 +56,7 @@ public class SecondActivity extends AppCompatActivity
   private final LinkedHashSet<String> selectedPhotoNames = new LinkedHashSet<>();
   private LinkedHashSet<String> pendingDeletePhotoNames = new LinkedHashSet<>();
   private final Map<String, Bitmap> previewBitmapsByName = new ConcurrentHashMap<>();
+  private final Map<String, String> videoDurationByName = new ConcurrentHashMap<>();
   private final Map<Integer, Map<Integer, String>> incomingPreviewChunksByIndex = new HashMap<>();
   private final Map<Integer, Integer> incomingPreviewPartsByIndex = new HashMap<>();
   private final Map<Integer, String> incomingPreviewNameByIndex = new HashMap<>();
@@ -124,6 +129,7 @@ public class SecondActivity extends AppCompatActivity
       } else {
         SessionDataCache.clearAlbumPreviewCache(albumName);
         previewBitmapsByName.clear();
+        videoDurationByName.clear();
         photos.clear();
         adapter.notifyDataSetChanged();
       }
@@ -217,8 +223,18 @@ public class SecondActivity extends AppCompatActivity
           continue;
         }
         Bitmap decodedPreview = decodePreviewBitmap(parts[1]);
+        String durationLabel = "";
+        if (decodedPreview == null && MediaTypeUtil.isVideoFileName(parts[0])) {
+          VideoPreviewInfo previewInfo = decodeVideoPreviewInfoFromEncoded(parts[1]);
+          decodedPreview = previewInfo.previewBitmap;
+          durationLabel = previewInfo.durationLabel;
+        }
         if (decodedPreview != null) {
           previewBitmapsByName.put(parts[0], decodedPreview);
+          if (MediaTypeUtil.isVideoFileName(parts[0]) && !durationLabel.equals("")) {
+            videoDurationByName.put(parts[0], durationLabel);
+            SessionDataCache.putAlbumPhotoVideoDuration(getAlbumName(), parts[0], durationLabel);
+          }
           appendPhotoToRows(parts[0], decodedPreview);
           SessionDataCache.putAlbumPhotoPreview(getAlbumName(), parts[0], decodedPreview);
         }
@@ -242,6 +258,10 @@ public class SecondActivity extends AppCompatActivity
         continue;
       }
       previewBitmapsByName.put(photoName, preview);
+      String cachedDuration = SessionDataCache.getAlbumPhotoVideoDuration(albumName, photoName);
+      if (!cachedDuration.equals("")) {
+        videoDurationByName.put(photoName, cachedDuration);
+      }
       appendPhotoToRows(photoName, preview);
     }
   }
@@ -427,6 +447,8 @@ public class SecondActivity extends AppCompatActivity
       case R.id.addPhotosMenuItem:
         Intent goGallery =
             new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+        goGallery.setType("*/*");
+        goGallery.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {"image/*", "video/*"});
         startActivityForResult(goGallery, RESULT_LOAD_IMAGE);
         return true;
       case R.id.sharePhotosMenuItem:
@@ -445,6 +467,12 @@ public class SecondActivity extends AppCompatActivity
     goPhotoViewer.putExtra("album_name", getAlbumName());
     goPhotoViewer.putExtra("albums", getAlbumsPayload());
     goPhotoViewer.putExtra("photo_name", photoName);
+    ArrayList<String> orderedPhotoNames = getOrderedPhotoNames();
+    goPhotoViewer.putStringArrayListExtra("photo_names", orderedPhotoNames);
+    int currentPhotoIndex = orderedPhotoNames.indexOf(photoName);
+    if (currentPhotoIndex >= 0) {
+      goPhotoViewer.putExtra("photo_index", currentPhotoIndex);
+    }
     Bitmap previewBitmap = previewBitmapsByName.get(photoName);
     if (previewBitmap != null) {
       ByteArrayOutputStream previewStream = new ByteArrayOutputStream();
@@ -482,19 +510,50 @@ public class SecondActivity extends AppCompatActivity
     return selectedPhotoNames.contains(photoName);
   }
 
+  @Override
+  public String getVideoDurationLabel(String photoName) {
+    if (photoName == null) {
+      return "";
+    }
+    String label = videoDurationByName.get(photoName);
+    return label == null ? "" : label;
+  }
+
+  private ArrayList<String> getOrderedPhotoNames() {
+    ArrayList<String> names = new ArrayList<>();
+    for (PhotosItem row : photos) {
+      addPhotoNameIfPresent(names, row.getFirstName(), row.getFirstPhotoIcon());
+      addPhotoNameIfPresent(names, row.getSecondName(), row.getSecondPhotoIcon());
+      addPhotoNameIfPresent(names, row.getThirdName(), row.getThirdPhotoIcon());
+      addPhotoNameIfPresent(names, row.getFourtName(), row.getFourthPhotoIcon());
+    }
+    return names;
+  }
+
+  private void addPhotoNameIfPresent(ArrayList<String> names, String name, Bitmap bitmap) {
+    if (name == null || name.equals("") || bitmap == null || name.startsWith("__loading__")) {
+      return;
+    }
+    names.add(name);
+  }
+
   private void refreshSelectionUi() {
     if (optionsMenu == null) {
       return;
     }
+    MenuItem addItem = optionsMenu.findItem(R.id.addPhotosMenuItem);
     MenuItem shareItem = optionsMenu.findItem(R.id.sharePhotosMenuItem);
     MenuItem deleteItem = optionsMenu.findItem(R.id.deletePhotosMenuItem);
     boolean hasSelection = !selectedPhotoNames.isEmpty();
+    if (addItem != null) {
+      addItem.setVisible(!selectionMode);
+    }
     if (shareItem != null) {
-      shareItem.setVisible(selectionMode);
+      shareItem.setVisible(selectionMode && hasSelection);
       shareItem.setEnabled(hasSelection);
     }
     if (deleteItem != null) {
-      deleteItem.setVisible(selectionMode);
+      deleteItem.setVisible(selectionMode && hasSelection);
       deleteItem.setEnabled(hasSelection);
     }
   }
@@ -637,6 +696,92 @@ public class SecondActivity extends AppCompatActivity
     return loadingBitmap;
   }
 
+  private Bitmap createVideoPreviewBitmap() {
+    return MediaTypeUtil.createVideoPlaceholder(320, 180);
+  }
+
+  private static final class VideoPreviewInfo {
+    private final Bitmap previewBitmap;
+    private final String durationLabel;
+
+    private VideoPreviewInfo(Bitmap previewBitmap, String durationLabel) {
+      this.previewBitmap = previewBitmap;
+      this.durationLabel = durationLabel == null ? "" : durationLabel;
+    }
+  }
+
+  private static final class ByteArrayMediaDataSource extends MediaDataSource {
+    private final byte[] data;
+
+    private ByteArrayMediaDataSource(byte[] data) {
+      this.data = data;
+    }
+
+    @Override
+    public int readAt(long position, byte[] buffer, int offset, int size) {
+      if (position >= data.length) {
+        return -1;
+      }
+      int length = Math.min(size, data.length - (int) position);
+      System.arraycopy(data, (int) position, buffer, offset, length);
+      return length;
+    }
+
+    @Override
+    public long getSize() {
+      return data.length;
+    }
+
+    @Override
+    public void close() {}
+  }
+
+  private VideoPreviewInfo extractVideoPreviewInfo(byte[] rawVideoBytes) {
+    if (rawVideoBytes == null || rawVideoBytes.length == 0) {
+      return new VideoPreviewInfo(createVideoPreviewBitmap(), "");
+    }
+    MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+    try {
+      retriever.setDataSource(new ByteArrayMediaDataSource(rawVideoBytes));
+      Bitmap frame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+      if (frame == null) {
+        frame = retriever.getFrameAtTime();
+      }
+      String durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+      long durationLong = 0L;
+      if (durationMs != null) {
+        try {
+          durationLong = Long.parseLong(durationMs);
+        } catch (NumberFormatException ignored) {
+        }
+      }
+      String durationLabel = MediaTypeUtil.formatDurationMillis(durationLong);
+      Bitmap scaled = frame == null ? null : downscaleForUpload(frame, PREVIEW_MAX_DIMENSION);
+      return new VideoPreviewInfo(
+          scaled == null ? createVideoPreviewBitmap() : scaled, durationLabel);
+    } catch (RuntimeException e) {
+      return new VideoPreviewInfo(createVideoPreviewBitmap(), "");
+    } finally {
+      try {
+        retriever.release();
+      } catch (IOException ignored) {
+      }
+    }
+  }
+
+  @RequiresApi(api = Build.VERSION_CODES.O)
+  private VideoPreviewInfo decodeVideoPreviewInfoFromEncoded(String encodedPreview) {
+    if (encodedPreview == null || encodedPreview.equals("")) {
+      return new VideoPreviewInfo(createVideoPreviewBitmap(), "");
+    }
+    try {
+      byte[] decodedBytes = Base64.getDecoder().decode(encodedPreview);
+      return extractVideoPreviewInfo(decodedBytes);
+    } catch (IllegalArgumentException ignored) {
+      return new VideoPreviewInfo(createVideoPreviewBitmap(), "");
+    }
+  }
+
   @RequiresApi(api = Build.VERSION_CODES.O)
   private void decodeAndApplyPreviewAsync(
       final int placeholderIndex, final String photoName, final String encodedPreview) {
@@ -645,7 +790,14 @@ public class SecondActivity extends AppCompatActivity
               final Bitmap decodedPreview = decodePreviewBitmap(encodedPreview);
               runOnUiThread(
                   () -> {
-                    if (decodedPreview == null) {
+                    Bitmap effectivePreview = decodedPreview;
+                    String durationLabel = "";
+                    if (effectivePreview == null && MediaTypeUtil.isVideoFileName(photoName)) {
+                      VideoPreviewInfo previewInfo = decodeVideoPreviewInfoFromEncoded(encodedPreview);
+                      effectivePreview = previewInfo.previewBitmap;
+                      durationLabel = previewInfo.durationLabel;
+                    }
+                    if (effectivePreview == null) {
                       if (placeholderIndex >= 0) {
                         clearPlaceholderAtIndex(placeholderIndex);
                       }
@@ -657,14 +809,21 @@ public class SecondActivity extends AppCompatActivity
                       }
                       return;
                     }
-                    previewBitmapsByName.put(photoName, decodedPreview);
+                    previewBitmapsByName.put(photoName, effectivePreview);
+                    if (MediaTypeUtil.isVideoFileName(photoName)) {
+                      if (!durationLabel.equals("")) {
+                        videoDurationByName.put(photoName, durationLabel);
+                      }
+                      SessionDataCache.putAlbumPhotoVideoDuration(
+                          getAlbumName(), photoName, durationLabel);
+                    }
                     if (placeholderIndex >= 0) {
-                      replacePlaceholderAtIndex(placeholderIndex, photoName, decodedPreview);
-                    } else if (!updatePhotoBitmapIfExists(photoName, decodedPreview)) {
-                      appendPhotoToRows(photoName, decodedPreview);
+                      replacePlaceholderAtIndex(placeholderIndex, photoName, effectivePreview);
+                    } else if (!updatePhotoBitmapIfExists(photoName, effectivePreview)) {
+                      appendPhotoToRows(photoName, effectivePreview);
                     }
                     SessionDataCache.putAlbumPhotoPreview(
-                        getAlbumName(), photoName, decodedPreview);
+                        getAlbumName(), photoName, effectivePreview);
                   });
             })
         .start();
@@ -824,6 +983,7 @@ public class SecondActivity extends AppCompatActivity
     photos.addAll(rebuilt);
     for (String deletedName : toDelete) {
       previewBitmapsByName.remove(deletedName);
+      videoDurationByName.remove(deletedName);
     }
     adapter.notifyDataSetChanged();
   }
@@ -858,7 +1018,7 @@ public class SecondActivity extends AppCompatActivity
       if (selectedImage == null) {
         return;
       }
-      nameOfFile = getFileName(selectedImage);
+      nameOfFile = ensureFileNameHasExtension(getFileName(selectedImage), selectedImage);
       String contentType = getContentResolver().getType(selectedImage);
       if (contentType == null) {
         contentType = "image/png";
@@ -887,23 +1047,38 @@ public class SecondActivity extends AppCompatActivity
       }
 
       Bitmap imageToPreview = BitmapFactory.decodeByteArray(rawImageBytes, 0, rawImageBytes.length);
-      if (imageToPreview == null) {
+      boolean isVideo = MediaTypeUtil.isVideoFileName(nameOfFile) || contentType.startsWith("video/");
+      if (imageToPreview == null && !isVideo) {
         Toast.makeText(
                 getApplicationContext(), getString(R.string.upload_photo_error), Toast.LENGTH_SHORT)
             .show();
         return;
       }
 
-      Bitmap localPreview = downscaleForUpload(imageToPreview, PREVIEW_MAX_DIMENSION);
+      String durationLabel = "";
+      Bitmap localPreview;
+      if (isVideo) {
+        VideoPreviewInfo localVideoPreviewInfo = extractVideoPreviewInfo(rawImageBytes);
+        localPreview = localVideoPreviewInfo.previewBitmap;
+        durationLabel = localVideoPreviewInfo.durationLabel;
+      } else {
+        localPreview = downscaleForUpload(imageToPreview, PREVIEW_MAX_DIMENSION);
+      }
       if (localPreview != null
           && getIntent().hasExtra("album_name")
           && !SessionDataCache.isPhotoPendingDeletion(getAlbumName(), nameOfFile)) {
         String albumName = getIntent().getExtras().getString("album_name");
         previewBitmapsByName.put(nameOfFile, localPreview);
+        if (isVideo && !durationLabel.equals("")) {
+          videoDurationByName.put(nameOfFile, durationLabel);
+        }
         if (!updatePhotoBitmapIfExists(nameOfFile, localPreview)) {
           appendPhotoToRows(nameOfFile, localPreview);
         }
         SessionDataCache.putAlbumPhotoPreview(albumName, nameOfFile, localPreview);
+        if (isVideo) {
+          SessionDataCache.putAlbumPhotoVideoDuration(albumName, nameOfFile, durationLabel);
+        }
       }
 
       String encodedImage =
@@ -982,6 +1157,46 @@ public class SecondActivity extends AppCompatActivity
       }
     }
     return result;
+  }
+
+  private String ensureFileNameHasExtension(String fileName, android.net.Uri uri) {
+    String safeName = fileName == null ? "" : fileName.trim();
+    if (safeName.equals("")) {
+      safeName = "media_" + System.currentTimeMillis();
+    }
+    int dotIndex = safeName.lastIndexOf('.');
+    if (dotIndex > 0 && dotIndex < safeName.length() - 1) {
+      return safeName;
+    }
+
+    String contentType = getContentResolver().getType(uri);
+    if (contentType == null || contentType.trim().equals("")) {
+      return safeName;
+    }
+
+    String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(contentType);
+    if (extension == null || extension.trim().equals("")) {
+      if (contentType.equalsIgnoreCase("image/gif")) {
+        extension = "gif";
+      } else if (contentType.equalsIgnoreCase("video/mp4")) {
+        extension = "mp4";
+      } else if (contentType.equalsIgnoreCase("video/webm")) {
+        extension = "webm";
+      } else if (contentType.equalsIgnoreCase("video/quicktime")) {
+        extension = "mov";
+      } else if (contentType.equalsIgnoreCase("video/x-matroska")) {
+        extension = "mkv";
+      } else if (contentType.equalsIgnoreCase("video/x-msvideo")) {
+        extension = "avi";
+      } else if (contentType.equalsIgnoreCase("video/3gpp")) {
+        extension = "3gp";
+      }
+    }
+
+    if (extension == null || extension.trim().equals("")) {
+      return safeName;
+    }
+    return safeName + "." + extension.toLowerCase(Locale.ROOT);
   }
 
   @RequiresApi(api = Build.VERSION_CODES.O)

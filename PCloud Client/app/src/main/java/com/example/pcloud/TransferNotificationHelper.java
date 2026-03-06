@@ -82,31 +82,10 @@ public final class TransferNotificationHelper {
   }
 
   public static void completeUpload(Context context) {
-    ensureChannel(context);
-    NotificationCompat.Builder builder =
-        new NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-            .setContentTitle("Upload complete")
-            .setOnlyAlertOnce(true)
-            .setAutoCancel(true)
-            .setOngoing(false)
-            .setProgress(0, 0, false)
-            .setPriority(NotificationCompat.PRIORITY_LOW);
-    safeNotify(context, UPLOAD_NOTIFICATION_ID, builder);
     safeCancel(context, UPLOAD_NOTIFICATION_ID);
   }
 
   public static void failUpload(Context context) {
-    ensureChannel(context);
-    NotificationCompat.Builder builder =
-        new NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_error)
-            .setContentTitle("Upload failed")
-            .setOnlyAlertOnce(true)
-            .setAutoCancel(true)
-            .setOngoing(false)
-            .setPriority(NotificationCompat.PRIORITY_LOW);
-    safeNotify(context, UPLOAD_NOTIFICATION_ID, builder);
     safeCancel(context, UPLOAD_NOTIFICATION_ID);
   }
 
@@ -131,31 +110,10 @@ public final class TransferNotificationHelper {
   }
 
   public static void completeDownload(Context context) {
-    ensureChannel(context);
-    NotificationCompat.Builder builder =
-        new NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("Download complete")
-            .setOnlyAlertOnce(true)
-            .setAutoCancel(true)
-            .setOngoing(false)
-            .setProgress(0, 0, false)
-            .setPriority(NotificationCompat.PRIORITY_LOW);
-    safeNotify(context, DOWNLOAD_NOTIFICATION_ID, builder);
     safeCancel(context, DOWNLOAD_NOTIFICATION_ID);
   }
 
   public static void failDownload(Context context) {
-    ensureChannel(context);
-    NotificationCompat.Builder builder =
-        new NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_error)
-            .setContentTitle("Download failed")
-            .setOnlyAlertOnce(true)
-            .setAutoCancel(true)
-            .setOngoing(false)
-            .setPriority(NotificationCompat.PRIORITY_LOW);
-    safeNotify(context, DOWNLOAD_NOTIFICATION_ID, builder);
     safeCancel(context, DOWNLOAD_NOTIFICATION_ID);
   }
 }

@@ -32,6 +32,8 @@ public class RegisterActivity extends AppCompatActivity implements ReceiveMessag
       lastNameRegister,
       birthDateRegister;
   Button registerButtonRegister;
+  private String pendingRegisteredUsername;
+  private String pendingRegisteredPassword;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -160,6 +162,8 @@ public class RegisterActivity extends AppCompatActivity implements ReceiveMessag
               && firstNameRegisterLayout.getError() == null
               && lastNameRegisterLayout.getError() == null
               && birthDateRegisterLayout.getError() == null) {
+            pendingRegisteredUsername = usernameRegister.getText().toString();
+            pendingRegisteredPassword = passwordRegister.getText().toString();
             //                Toast.makeText(getApplicationContext(), "sucsses",
             // Toast.LENGTH_SHORT).show();
             new Thread(
@@ -266,6 +270,7 @@ public class RegisterActivity extends AppCompatActivity implements ReceiveMessag
     HandelMessage message = new HandelMessage(mes);
     if (message.getName().equals("REGISTER")) {
       if (message.getType().equals(MessageCodes.getConfirm())) {
+        ReconnectSession.setCredentials(pendingRegisteredUsername, pendingRegisteredPassword);
         new Thread(new SendMessagesThread("ALBUMS", MessageCodes.getRequest())).start();
       } else if (message.getType().equals(MessageCodes.getRegisterError())) {
         Toast.makeText(
