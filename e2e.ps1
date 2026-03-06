@@ -131,7 +131,7 @@ Push-Location $clientDir
 try {
     & ".\gradlew.bat" :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
     if ($LASTEXITCODE -ne 0) {
-        throw "Gradle assembleDebug failed (exit code $LASTEXITCODE)."
+        throw "Gradle assemble tasks (:app:assembleDebug, :app:assembleDebugAndroidTest) failed (exit code $LASTEXITCODE)."
     }
     if ($adb -and (Test-Path $adb)) {
         & $adb install -r "app/build/outputs/apk/debug/app-debug.apk" | Out-Host

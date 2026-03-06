@@ -112,8 +112,13 @@ if ($projectJavaHome) {
 }
 
 function Set-ClientSocketConfig([string]$file, [string]$socketHost, [int]$socketPort) {
-    $isValidIpv4 = $socketHost -match '^\d{1,3}(\.\d{1,3}){3}$'
-    $isValidHostname = $socketHost -match '^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)*$'
+    $ip = $null
+    $isValidIpv4 = [System.Net.IPAddress]::TryParse($socketHost, [ref]$ip) -and
+        $ip.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork
+    $isValidHostname = $false
+    if (-not $isValidIpv4) {
+        $isValidHostname = $socketHost -match '^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)*$'
+    }
     if (-not ($isValidIpv4 -or $isValidHostname)) {
         throw "Invalid host value '$socketHost'. Must be a valid IPv4 address or hostname."
     }
