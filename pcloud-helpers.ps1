@@ -114,11 +114,16 @@ function Set-ClientSocketConfig {
 
     $raw = Get-Content -Raw -Path $File
     $updated = $raw
-    $updated = [regex]::Replace($updated, 'private\s+static\s+String\s+INERIP\s*=\s*"[^"]*"\s*;[^\S\r\n]*(//[^\r\n]*)?', "private static String INERIP = `"$SocketHost`";")
-    $updated = [regex]::Replace($updated, 'private\s+static\s+String\s+IP\s*=\s*"[^"]*"\s*;[^\S\r\n]*(//[^\r\n]*)?', "private static String IP = `"$SocketHost`"; // configured by pcloud scripts")
-    $updated = [regex]::Replace($updated, 'private\s+static\s+int\s+Port\s*=\s*\d+\s*;', "private static int Port = $Port;")
-    # Ensure INERIP and IP declarations are on separate lines (fix concatenation if both appear on one line)
-    $updated = [regex]::Replace($updated, '(private static String INERIP = "[^"]*";)[^\S\r\n]*(private static String IP)', "`$1`n  `$2")
+    # Separate INERIP and IP if they appear concatenated on the same line, capturing and reusing the leading indentation.
+    # The INERIP capture group includes any optional trailing comment so it is preserved when the declarations are split.
+    # Use [^\S\r\n]* for the indent capture so \s does not accidentally span newlines in .NET regex.
+    $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)(private\s+static\s+String\s+INERIP\s*=\s*"[^"]*"\s*;[^\S\r\n]*(//[^\r\n]*)?)[^\S\r\n]*(private\s+static\s+String\s+IP)', "`$1`$2`n`$1`$4")
+    # Replace INERIP, anchoring to line start to preserve leading indentation and any existing trailing comment
+    $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)private\s+static\s+String\s+INERIP\s*=\s*"[^"]*"\s*;([^\S\r\n]*//[^\r\n]*)?', "`$1private static String INERIP = `"$SocketHost`";`$2")
+    # Replace IP, anchoring to line start to preserve leading indentation
+    $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)private\s+static\s+String\s+IP\s*=\s*"[^"]*"\s*;[^\S\r\n]*(//[^\r\n]*)?', "`$1private static String IP = `"$SocketHost`"; // configured by pcloud scripts")
+    # Replace Port, anchoring to line start to preserve leading indentation
+    $updated = [regex]::Replace($updated, '(?m)^([^\S\r\n]*)private\s+static\s+int\s+Port\s*=\s*\d+\s*;', "`$1private static int Port = $Port;")
 
     if ($updated -eq $raw) {
         Write-Host "No socket config changes were needed."
