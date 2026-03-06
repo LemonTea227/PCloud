@@ -104,7 +104,7 @@ function Install-DebugApkWithRetry([string]$adbPath) {
             $installSucceeded = $true
             break
         }
-        Write-Host "installDebug failed (attempt $attempt). Retrying after adb reconnect..."
+        Write-Warning "installDebug failed (attempt $attempt). Retrying after adb reconnect..."
         if ($adbPath) {
             & $adbPath kill-server | Out-Null
             & $adbPath start-server | Out-Null
@@ -211,7 +211,7 @@ function Ensure-ClientDevice([string]$adbPath) {
             Remove-Item -Path $snapshotDir -Recurse -Force -ErrorAction Stop
             Write-Host "Removed incompatible snapshot cache for '$selectedAvd'."
         } catch {
-            Write-Host "Could not remove snapshot cache for '$selectedAvd'; continuing with no-snapshot mode."
+            Write-Warning "Could not remove snapshot cache for '$selectedAvd'; continuing with no-snapshot mode."
         }
     }
 
@@ -246,7 +246,7 @@ if (-not $SkipClient -and ($AutoDetectPhoneHost -or -not $PSBoundParameters.Cont
             $resolvedServerHost = $lanIp
             Write-Host "Physical device '$physicalDevice' detected. Using LAN host $resolvedServerHost"
         } else {
-            Write-Host "Physical device detected but LAN IP auto-detection failed; keeping host $resolvedServerHost"
+            Write-Warning "Physical device detected but LAN IP auto-detection failed; keeping host $resolvedServerHost"
         }
     }
 }
