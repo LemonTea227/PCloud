@@ -118,7 +118,17 @@ if ($adb -and (Test-Path $adb)) {
     }
 
     try {
-        $savedVerifierSettings = Disable-AdbPackageVerification -adbPath $adb
+        $isEmulator = $false
+        try {
+            $qemu = (& $adb shell getprop ro.kernel.qemu 2>$null | Out-String).Trim()
+            $isEmulator = ($qemu -eq "1")
+        } catch {}
+
+        if ($isEmulator) {
+            $savedVerifierSettings = Disable-AdbPackageVerification -adbPath $adb
+        } else {
+            Write-Host "Physical device detected. Skipping package verifier changes (emulators only)."
+        }
         & $adb shell settings put global window_animation_scale 0 | Out-Null
         & $adb shell settings put global transition_animation_scale 0 | Out-Null
         & $adb shell settings put global animator_duration_scale 0 | Out-Null
