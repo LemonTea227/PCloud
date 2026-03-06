@@ -37,6 +37,9 @@ function Invoke-RealServerCleanup {
     }
 }
 
+# Sentinel returned by Get-AdbGlobalSetting when the adb read fails, distinct from $null (confirmed absent).
+$script:AdbReadError = [PSCustomObject]@{ __sentinel__ = 'read_error' }
+
 function Get-AdbGlobalSetting([string]$adbPath, [string]$setting) {
     try {
         $value = (& $adbPath shell settings get global $setting 2>$null | Select-Object -Last 1)
@@ -46,7 +49,7 @@ function Get-AdbGlobalSetting([string]$adbPath, [string]$setting) {
         if ($value -eq "null" -or [string]::IsNullOrEmpty($value)) { return $null }
         return $value
     } catch {
-        return $null
+        return $script:AdbReadError
     }
 }
 
@@ -69,18 +72,24 @@ function Disable-AdbPackageVerification([string]$adbPath) {
 
 function Restore-AdbPackageVerification([string]$adbPath, [hashtable]$saved) {
     if (-not $adbPath -or -not $saved) { return }
-    try {
-        foreach ($key in $saved.Keys) {
-            $value = $saved[$key]
-            if ($null -eq $value) {
-                & $adbPath shell settings delete global $key | Out-Null
-            } else {
-                & $adbPath shell settings put global $key $value | Out-Null
-            }
+    $failures = 0
+    foreach ($key in $saved.Keys) {
+        $value = $saved[$key]
+        if ($value -is [PSCustomObject]) {
+            Write-Host "Warning: original value of '$key' could not be read; skipping restore."
+            $failures++
+        } elseif ($null -eq $value) {
+            & $adbPath shell settings delete global $key | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Host "Warning: could not delete '$key' setting."; $failures++ }
+        } else {
+            & $adbPath shell settings put global $key $value | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Host "Warning: could not restore '$key' to '$value'."; $failures++ }
         }
+    }
+    if ($failures -eq 0) {
         Write-Host "Restored package verifier settings on device."
-    } catch {
-        Write-Host "Warning: could not restore package verifier settings on device."
+    } else {
+        Write-Host "Warning: $failures package verifier setting(s) could not be fully restored on device."
     }
 }
 
@@ -91,31 +100,39 @@ function Disable-AdbAnimationScales([string]$adbPath) {
         transition_animation_scale = Get-AdbGlobalSetting -adbPath $adbPath -setting "transition_animation_scale"
         animator_duration_scale    = Get-AdbGlobalSetting -adbPath $adbPath -setting "animator_duration_scale"
     }
-    try {
-        & $adbPath shell settings put global window_animation_scale 0 | Out-Null
-        & $adbPath shell settings put global transition_animation_scale 0 | Out-Null
-        & $adbPath shell settings put global animator_duration_scale 0 | Out-Null
+    $allSet = $true
+    & $adbPath shell settings put global window_animation_scale 0 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "Warning: could not set window_animation_scale to 0."; $allSet = $false }
+    & $adbPath shell settings put global transition_animation_scale 0 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "Warning: could not set transition_animation_scale to 0."; $allSet = $false }
+    & $adbPath shell settings put global animator_duration_scale 0 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "Warning: could not set animator_duration_scale to 0."; $allSet = $false }
+    if ($allSet) {
         Write-Host "Device animations disabled for stable Espresso runs."
-    } catch {
-        Write-Host "Warning: could not set animation scales via adb."
     }
     return $saved
 }
 
 function Restore-AdbAnimationScales([string]$adbPath, [hashtable]$saved) {
     if (-not $adbPath -or -not $saved) { return }
-    try {
-        foreach ($key in $saved.Keys) {
-            $value = $saved[$key]
-            if ($null -eq $value) {
-                & $adbPath shell settings delete global $key | Out-Null
-            } else {
-                & $adbPath shell settings put global $key $value | Out-Null
-            }
+    $failures = 0
+    foreach ($key in $saved.Keys) {
+        $value = $saved[$key]
+        if ($value -is [PSCustomObject]) {
+            Write-Host "Warning: original value of '$key' could not be read; skipping restore."
+            $failures++
+        } elseif ($null -eq $value) {
+            & $adbPath shell settings delete global $key | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Host "Warning: could not delete '$key' setting."; $failures++ }
+        } else {
+            & $adbPath shell settings put global $key $value | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Host "Warning: could not restore '$key' to '$value'."; $failures++ }
         }
+    }
+    if ($failures -eq 0) {
         Write-Host "Restored animation scale settings on device."
-    } catch {
-        Write-Host "Warning: could not restore animation scale settings on device."
+    } else {
+        Write-Host "Warning: $failures animation scale setting(s) could not be fully restored on device."
     }
 }
 
