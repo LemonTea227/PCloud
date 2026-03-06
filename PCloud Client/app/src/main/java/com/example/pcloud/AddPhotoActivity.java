@@ -18,8 +18,10 @@ import androidx.appcompat.app.AppCompatActivity;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 
 public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessagesListener {
   private static final int RESULT_LOAD_IMAGE = 1;
@@ -27,6 +29,9 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
   String mimeType = "";
   String nameOfFile = "";
   android.net.Uri selectedImageUri = null;
+  private final Set<Integer> uploadAckedParts = new LinkedHashSet<>();
+  private int uploadExpectedParts = 0;
+  private String uploadTrackingFileName = "";
 
   ImageButton choosePhotoAddPhotoImageButton;
   Button addPhotoButton;
@@ -157,11 +162,40 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
       if (message.getType().equals(MessageCodes.getConfirm())) {
         MySocket.endTransfer();
         TransferNotificationHelper.completeUpload(getApplicationContext());
+        resetUploadProgressTracking();
       } else if (message.getType().equals(MessageCodes.getUploadPhotoError())) {
         MySocket.endTransfer();
         TransferNotificationHelper.failUpload(getApplicationContext());
+        resetUploadProgressTracking();
       }
     }
+
+    if (message.getName().equals("UPLOAD_PHOTO_CHUNK")) {
+      if (message.getType().equals(MessageCodes.getConfirm())) {
+        String[] lines = message.getData().split("\\n");
+        if (lines.length >= 3) {
+          String ackFileName = lines[1];
+          if (!ackFileName.equals(uploadTrackingFileName)) {
+            return;
+          }
+          try {
+            int ackPartIndex = Integer.parseInt(lines[2]);
+            uploadAckedParts.add(ackPartIndex);
+            if (uploadExpectedParts > 0) {
+              TransferNotificationHelper.showUploadProgress(
+                  getApplicationContext(), uploadAckedParts.size(), uploadExpectedParts);
+            }
+          } catch (NumberFormatException ignored) {
+          }
+        }
+      }
+    }
+  }
+
+  private void resetUploadProgressTracking() {
+    uploadAckedParts.clear();
+    uploadExpectedParts = 0;
+    uploadTrackingFileName = "";
   }
 
   public String getFileName(android.net.Uri uri) {
@@ -231,6 +265,9 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
               }
 
               String startPayload = albumName + "\n" + fileName + "\n" + totalParts;
+                uploadExpectedParts = totalParts;
+                uploadTrackingFileName = fileName;
+                uploadAckedParts.clear();
               SendMessagesThread.queueMessage(
                   "UPLOAD_PHOTO_START", MessageCodes.getRequest(), startPayload);
               TransferNotificationHelper.showUploadProgress(getApplicationContext(), 0, totalParts);
@@ -251,8 +288,6 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
                         + chunk;
                 SendMessagesThread.queueMessage(
                     "UPLOAD_PHOTO_CHUNK", MessageCodes.getRequest(), chunkPayload);
-                TransferNotificationHelper.showUploadProgress(
-                    getApplicationContext(), partIndex + 1, totalParts);
               }
             })
         .start();

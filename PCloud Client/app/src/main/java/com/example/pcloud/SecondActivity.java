@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class SecondActivity extends AppCompatActivity
@@ -69,6 +70,9 @@ public class SecondActivity extends AppCompatActivity
   private String pendingDeletePayload;
   private Snackbar loadingSnackbar;
   private PowerManager.WakeLock transferWakeLock;
+  private final Set<Integer> uploadAckedParts = new LinkedHashSet<>();
+  private int uploadExpectedParts;
+  private String uploadTrackingFileName;
 
   private boolean first;
 
@@ -96,6 +100,8 @@ public class SecondActivity extends AppCompatActivity
     expectedPreviewCount = 0;
     previewPlaceholderOffset = 0;
     pendingDeletePayload = null;
+    uploadExpectedParts = 0;
+    uploadTrackingFileName = "";
 
     if (getIntent().hasExtra("album_name")) {
       setTitle(getIntent().getExtras().getString("album_name"));
@@ -379,6 +385,9 @@ public class SecondActivity extends AppCompatActivity
               }
 
               String startPayload = albumName + "\n" + fileName + "\n" + totalParts;
+                uploadExpectedParts = totalParts;
+                uploadTrackingFileName = fileName;
+                uploadAckedParts.clear();
               SendMessagesThread.queueMessage(
                   "UPLOAD_PHOTO_START", MessageCodes.getRequest(), startPayload);
               TransferNotificationHelper.showUploadProgress(getApplicationContext(), 0, totalParts);
@@ -399,11 +408,15 @@ public class SecondActivity extends AppCompatActivity
                         + chunk;
                 SendMessagesThread.queueMessage(
                     "UPLOAD_PHOTO_CHUNK", MessageCodes.getRequest(), chunkPayload);
-                TransferNotificationHelper.showUploadProgress(
-                    getApplicationContext(), partIndex + 1, totalParts);
               }
             })
         .start();
+  }
+
+  private void resetUploadProgressTracking() {
+    uploadAckedParts.clear();
+    uploadExpectedParts = 0;
+    uploadTrackingFileName = "";
   }
 
   private void acquireTransferWakeLock() {
@@ -1324,17 +1337,40 @@ public class SecondActivity extends AppCompatActivity
       if (message.getType().equals(MessageCodes.getConfirm())) {
         MySocket.endTransfer();
         TransferNotificationHelper.completeUpload(getApplicationContext());
+        resetUploadProgressTracking();
         releaseTransferWakeLock();
         addPhoto(message.getData());
       } else if (message.getType().equals(MessageCodes.getUploadPhotoError())) {
         MySocket.endTransfer();
         TransferNotificationHelper.failUpload(getApplicationContext());
+        resetUploadProgressTracking();
         releaseTransferWakeLock();
         Toast.makeText(
                 getApplicationContext(),
                 getResources().getString(R.string.upload_photo_error),
                 Toast.LENGTH_SHORT)
             .show();
+      }
+    }
+
+    if (message.getName().equals("UPLOAD_PHOTO_CHUNK")) {
+      if (message.getType().equals(MessageCodes.getConfirm())) {
+        String[] lines = message.getData().split("\\n");
+        if (lines.length >= 3) {
+          String ackFileName = lines[1];
+          if (!ackFileName.equals(uploadTrackingFileName)) {
+            return;
+          }
+          try {
+            int ackPartIndex = Integer.parseInt(lines[2]);
+            uploadAckedParts.add(ackPartIndex);
+            if (uploadExpectedParts > 0) {
+              TransferNotificationHelper.showUploadProgress(
+                  getApplicationContext(), uploadAckedParts.size(), uploadExpectedParts);
+            }
+          } catch (NumberFormatException ignored) {
+          }
+        }
       }
     }
     if (message.getName().equals("DEL_PHOTOS")) {
