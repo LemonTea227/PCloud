@@ -3,7 +3,6 @@ $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $repoRoot "pcloud-helpers.ps1")
 $clientDir = Join-Path $repoRoot "PCloud Client"
 $serverDir = Join-Path $repoRoot "PCloud Server"
-$localPropertiesFile = Join-Path $clientDir "local.properties"
 $gradlePropertiesFile = Join-Path $clientDir "gradle.properties"
 
 $projectJavaHome = Get-ProjectJavaHome -GradlePropertiesFile $gradlePropertiesFile
@@ -15,20 +14,7 @@ if ($projectJavaHome) {
     }
 }
 
-$androidSdkConfigured = $false
-if ($env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT)) {
-    $androidSdkConfigured = $true
-} elseif (Test-Path $localPropertiesFile) {
-    $sdkLine = (Get-Content $localPropertiesFile | Where-Object { $_ -match '^sdk\.dir=' } | Select-Object -First 1)
-    if ($sdkLine) {
-        $sdkPath = $sdkLine.Substring(8)
-        $sdkPath = $sdkPath -replace '\\\\', '\\'
-        $sdkPath = $sdkPath -replace '\\:', ':'
-        if (Test-Path $sdkPath) {
-            $androidSdkConfigured = $true
-        }
-    }
-}
+$androidSdkConfigured = Test-AndroidSdk -ClientPath $clientDir
 
 if ($androidSdkConfigured -and (Test-Java11OrNewer)) {
     Write-Host "[1/3] Android formatting + lint + unit tests"
@@ -47,33 +33,22 @@ if ($androidSdkConfigured -and (Test-Java11OrNewer)) {
     Write-Warning "Android SDK is not configured to a valid path. Skipping Android quality checks."
 }
 
-Write-Host "[2/3] Python unit tests"
+Write-Host "[2/3] Python formatting + tests"
+$pythonExe = Get-Python3Executable -RepoRoot $repoRoot
+if (-not $pythonExe) {
+    throw "Python 3 executable was not found. Install Python 3.10+ or ensure 'py -3' works."
+}
+
+& $pythonExe -m black $serverDir
+if ($LASTEXITCODE -ne 0) {
+    throw "Python formatting (black) failed (exit code $LASTEXITCODE)."
+}
+
 Push-Location $serverDir
 try {
-    if (Test-Path (Join-Path $repoRoot ".venv/Scripts/python.exe")) {
-        $pythonExe = (Join-Path $repoRoot ".venv/Scripts/python.exe")
-    } else {
-        $pythonExe = "py"
-    }
-
-    if ($pythonExe -eq "py") {
-        & py -3 -m black .
-        if ($LASTEXITCODE -ne 0) {
-            throw "Python formatting (black) failed (exit code $LASTEXITCODE)."
-        }
-        & py -3 -m unittest discover -s tests -p "test_*.py"
-        if ($LASTEXITCODE -ne 0) {
-            throw "Python 3 test execution failed (exit code $LASTEXITCODE)."
-        }
-    } else {
-        & $pythonExe -m black .
-        if ($LASTEXITCODE -ne 0) {
-            throw "Python formatting (black) failed (exit code $LASTEXITCODE)."
-        }
-        & $pythonExe -m unittest discover -s tests -p "test_*.py"
-        if ($LASTEXITCODE -ne 0) {
-            throw "Python 3 test execution failed (exit code $LASTEXITCODE)."
-        }
+    & $pythonExe -m unittest discover -s tests -p "test_*.py"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python 3 test execution failed (exit code $LASTEXITCODE)."
     }
 } finally {
     Pop-Location

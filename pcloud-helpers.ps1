@@ -117,6 +117,8 @@ function Set-ClientSocketConfig {
     $updated = [regex]::Replace($updated, 'private\s+static\s+String\s+INERIP\s*=\s*"[^"]*"\s*;[^\S\r\n]*(//[^\r\n]*)?', "private static String INERIP = `"$SocketHost`";")
     $updated = [regex]::Replace($updated, 'private\s+static\s+String\s+IP\s*=\s*"[^"]*"\s*;[^\S\r\n]*(//[^\r\n]*)?', "private static String IP = `"$SocketHost`"; // configured by pcloud scripts")
     $updated = [regex]::Replace($updated, 'private\s+static\s+int\s+Port\s*=\s*\d+\s*;', "private static int Port = $Port;")
+    # Ensure INERIP and IP declarations are on separate lines (fix concatenation if both appear on one line)
+    $updated = [regex]::Replace($updated, '(private static String INERIP = "[^"]*";)[^\S\r\n]*(private static String IP)', "`$1`n  `$2")
 
     if ($updated -eq $raw) {
         Write-Host "No socket config changes were needed."
@@ -173,6 +175,29 @@ function Test-Java11OrNewer {
     }
 
     return $false
+}
+
+function Test-AndroidSdk {
+    param([string]$ClientPath)
+
+    if ($env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT)) {
+        return $true
+    }
+
+    $localPropertiesFile = Join-Path $ClientPath "local.properties"
+    if (-not (Test-Path $localPropertiesFile)) {
+        return $false
+    }
+
+    $sdkLine = (Get-Content $localPropertiesFile | Where-Object { $_ -match '^sdk\.dir=' } | Select-Object -First 1)
+    if (-not $sdkLine) {
+        return $false
+    }
+
+    $sdkPath = $sdkLine.Substring(8)
+    $sdkPath = $sdkPath -replace '\\\\', '\\'
+    $sdkPath = $sdkPath -replace '\\:', ':'
+    return (Test-Path $sdkPath)
 }
 
 function Get-AdbPath {

@@ -45,27 +45,6 @@ if ($projectJavaHome) {
     }
 }
 
-function Test-AndroidSdk([string]$clientPath) {
-    if ($env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT)) {
-        return $true
-    }
-
-    $localPropertiesFile = Join-Path $clientPath "local.properties"
-    if (-not (Test-Path $localPropertiesFile)) {
-        return $false
-    }
-
-    $sdkLine = (Get-Content $localPropertiesFile | Where-Object { $_ -match '^sdk\.dir=' } | Select-Object -First 1)
-    if (-not $sdkLine) {
-        return $false
-    }
-
-    $sdkPath = $sdkLine.Substring(8)
-    $sdkPath = $sdkPath -replace '\\\\', '\\'
-    $sdkPath = $sdkPath -replace '\\:', ':'
-    return (Test-Path $sdkPath)
-}
-
 function Wait-ForAndroidBoot([string]$adbPath, [int]$timeoutSeconds = 120) {
     if (-not $adbPath) {
         return $false
@@ -258,7 +237,9 @@ function Ensure-ClientDevice([string]$adbPath) {
 }
 
 Write-Host "[1/4] Validating prerequisites..."
-Ensure-Command java
+if (-not $SkipClient) {
+    Ensure-Command java
+}
 $pythonExe = Get-Python3Executable -RepoRoot $repoRoot
 if (-not $pythonExe) {
     throw "Python 3 executable was not found. Install Python 3.10+ or ensure 'py -3' works."
@@ -311,7 +292,7 @@ if (-not $SkipClient) {
         throw "Android build requires Java 11+. Please set JAVA_HOME to a JDK 11+ installation."
     }
 
-    if (-not (Test-AndroidSdk -clientPath $clientDir)) {
+    if (-not (Test-AndroidSdk -ClientPath $clientDir)) {
         throw "Android SDK path is not configured. Set ANDROID_SDK_ROOT or fix sdk.dir in 'PCloud Client/local.properties'."
     }
 
