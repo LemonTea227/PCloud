@@ -247,7 +247,7 @@ if (-not $pythonExe) {
 $adbPath = Get-AdbPath
 
 $resolvedServerHost = $ServerHost
-if (-not $SkipClient -and ($AutoDetectPhoneHost -or $ServerHost -eq "10.0.2.2")) {
+if (-not $SkipClient -and ($AutoDetectPhoneHost -or -not $PSBoundParameters.ContainsKey('ServerHost'))) {
     $physicalDevice = Get-ConnectedPhysicalDeviceSerial -adbPath $adbPath
     if ($physicalDevice) {
         $lanIp = Get-PreferredLanIPv4
