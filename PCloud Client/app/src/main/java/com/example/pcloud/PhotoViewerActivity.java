@@ -340,11 +340,9 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
       return null;
     }
     File file = new File(cacheDir, System.currentTimeMillis() + "_" + safeName);
-    try {
-      FileOutputStream outputStream = new FileOutputStream(file);
+    try (FileOutputStream outputStream = new FileOutputStream(file)) {
       outputStream.write(bytes);
       outputStream.flush();
-      outputStream.close();
       return file;
     } catch (IOException e) {
       return null;
@@ -496,11 +494,9 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
       sanitizedName = "photo_" + System.currentTimeMillis();
     }
     File imageFile = new File(cacheDir, sanitizedName + ".png");
-    try {
-      FileOutputStream outputStream = new FileOutputStream(imageFile);
+    try (FileOutputStream outputStream = new FileOutputStream(imageFile)) {
       bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream);
       outputStream.flush();
-      outputStream.close();
       return FileProvider.getUriForFile(
           this, getApplicationContext().getPackageName() + ".fileprovider", imageFile);
     } catch (IOException e) {
@@ -518,11 +514,9 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
       sanitizedName = "media_" + System.currentTimeMillis();
     }
     File mediaFile = new File(cacheDir, sanitizedName);
-    try {
-      FileOutputStream outputStream = new FileOutputStream(mediaFile);
+    try (FileOutputStream outputStream = new FileOutputStream(mediaFile)) {
       outputStream.write(bytes);
       outputStream.flush();
-      outputStream.close();
       return FileProvider.getUriForFile(
           this, getApplicationContext().getPackageName() + ".fileprovider", mediaFile);
     } catch (IOException e) {
@@ -575,16 +569,30 @@ public class PhotoViewerActivity extends AppCompatActivity implements ReceiveMes
   }
 
   private void completePendingPhotoActionsIfReady() {
-    if (!hasFullPhoto || currentPhotoBitmap == null) {
+    if (!hasFullPhoto) {
+      return;
+    }
+    boolean hasMedia =
+        currentMediaBytes != null && currentMediaBytes.length > 0;
+    boolean hasImage = currentPhotoBitmap != null;
+    if (!hasMedia && !hasImage) {
       return;
     }
     if (pendingDownloadAfterFetch) {
       pendingDownloadAfterFetch = false;
-      saveCurrentPhotoToGallery();
+      if (hasMedia) {
+        saveCurrentMediaBytesToStorage();
+      } else {
+        saveCurrentPhotoToGallery();
+      }
     }
     if (pendingShareAfterFetch) {
       pendingShareAfterFetch = false;
-      shareBitmap(currentPhotoBitmap);
+      if (hasMedia) {
+        shareBytes(currentMediaBytes, currentMimeType);
+      } else {
+        shareBitmap(currentPhotoBitmap);
+      }
     }
   }
 

@@ -643,7 +643,7 @@ def encrypt(data, key, iv=None, encode=False):
     # Convert bytes to str if needed
     data = _bytes_to_str(data)
     key = _bytes_to_str(key)
-    
+
     if len(key) > 16:
         key = key[:16]
     else:
@@ -690,7 +690,7 @@ def decrypt(data, key, iv=None, decode=False):
     data = _bytes_to_str(data)
     data = _unwrap_python_bytes_repr(data)
     key = _bytes_to_str(key)
-    
+
     if decode:
         try:
             decoded = b64decode(data)
@@ -698,7 +698,7 @@ def decrypt(data, key, iv=None, decode=False):
         except (TypeError, Exception) as e:
             print(e)
             return ""
-    
+
     if len(key) > 16:
         key = key[:16]
     else:
@@ -961,7 +961,7 @@ def data_to_blocks(data):
     """
     # Convert bytes to str if needed (Python 3 compatibility)
     data = _bytes_to_str(data)
-    
+
     blocks = []
     block = ""
     for i in data:

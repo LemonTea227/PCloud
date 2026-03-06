@@ -48,6 +48,7 @@ class ConnectionThread implements Runnable {
         Thread.sleep(1000);
       } catch (InterruptedException e) {
         ClientLogger.logError("ConnectionThread", "Interrupted while reconnecting", e);
+        Thread.currentThread().interrupt();
       }
     }
   }
