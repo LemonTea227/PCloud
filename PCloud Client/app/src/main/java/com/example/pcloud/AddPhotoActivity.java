@@ -112,8 +112,13 @@ public class AddPhotoActivity extends AppCompatActivity implements ReceiveMessag
     if (requestCode == RESULT_LOAD_IMAGE && resultCode == RESULT_OK && data != null) {
       selectedImageUri = data.getData();
       nameOfFile = getFileName(selectedImageUri);
-      String[] mimeTypeSplit = getContentResolver().getType(selectedImageUri).split("/");
-      mimeType = mimeTypeSplit[mimeTypeSplit.length - 1];
+      String resolvedType = getContentResolver().getType(selectedImageUri);
+      if (resolvedType != null) {
+        String[] mimeTypeSplit = resolvedType.split("/");
+        mimeType = mimeTypeSplit[mimeTypeSplit.length - 1];
+      } else {
+        mimeType = "";
+      }
       choosePhotoAddPhotoImageButton.setImageURI(selectedImageUri);
       imageSelected = true;
     }

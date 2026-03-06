@@ -612,7 +612,7 @@ def get_preview_encoded_for_photo(sock, album_name, file_name, file_data=""):
 
     if os.path.isfile(preview_cache_path):
         try:
-            with open(preview_cache_path, "r") as cache_file:
+            with open(preview_cache_path, "r", encoding="utf-8") as cache_file:
                 cached = cache_file.read().strip()
                 if cached != "" and (
                     is_video_file_name(file_name)
@@ -654,7 +654,7 @@ def get_preview_encoded_for_photo(sock, album_name, file_name, file_data=""):
         else:
             preview_b64 = preview_b64_bytes
         try:
-            with open(preview_cache_path, "w") as cache_file:
+            with open(preview_cache_path, "w", encoding="utf-8") as cache_file:
                 cache_file.write(preview_b64)
         except IOError:
             pass

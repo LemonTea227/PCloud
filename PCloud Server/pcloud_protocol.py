@@ -95,7 +95,7 @@ def send_by_protocol(sock, message, aes_key=None):
     elif DEBUG and message != "":
         print("\nSent(%s)>>>%s" % (len(message), message[:100]))
     if MAKE_LOG:
-        with open(LOG_FILE, "a") as f:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write("\nSent(%s)>>>%s" % (len(message), message))
 
 
@@ -166,7 +166,7 @@ def recv_by_protocol(sock, aes_key=None, deadline_seconds=10.0, max_header_bytes
     elif DEBUG and len(data) > 100:
         print("\nRecv(%s)>>>%s" % (len(message), message[:100]))
     if MAKE_LOG:
-        with open(LOG_FILE, "a") as f:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write("\nRecv(%s)>>>%s" % (len(message), message))
 
     return str_headers + data
