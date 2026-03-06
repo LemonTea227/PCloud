@@ -32,6 +32,7 @@ function Stop-StalePCloudServers {
             }
         }
     } catch {
+        Write-Warning "Could not query for stale PCloud server processes: $($_.Exception.Message)"
     }
 }
 
@@ -68,40 +69,7 @@ function Get-Python3Executable {
     return $null
 }
 
-function Get-ProjectJavaHome {
-    if ($env:JAVA_HOME -and (Test-Path $env:JAVA_HOME)) {
-        return $env:JAVA_HOME
-    }
-
-    if (Test-Path $gradlePropertiesFile) {
-        $javaHomeLine = (Get-Content $gradlePropertiesFile | Where-Object { $_ -match '^org\.gradle\.java\.home=' } | Select-Object -First 1)
-        if ($javaHomeLine) {
-            $javaHome = $javaHomeLine.Substring('org.gradle.java.home='.Length)
-            if (Test-Path $javaHome) {
-                return $javaHome
-            }
-        }
-    }
-
-    return $null
-}
-
-function Test-Java11OrNewer {
-    $javaOutput = cmd /c "java -version 2>&1"
-    $versionLine = $javaOutput | Select-Object -First 1
-
-    if ($versionLine -match 'version "(\d+)') {
-        $major = [int]$matches[1]
-        if ($major -eq 1 -and $versionLine -match 'version "1\.(\d+)') {
-            return ([int]$matches[1] -ge 11)
-        }
-        return ($major -ge 11)
-    }
-
-    return $false
-}
-
-$projectJavaHome = Get-ProjectJavaHome
+$projectJavaHome = Get-ProjectJavaHome -GradlePropertiesFile $gradlePropertiesFile
 if ($projectJavaHome) {
     $env:JAVA_HOME = $projectJavaHome
     $javaBinPath = "$projectJavaHome\bin"
@@ -129,29 +97,6 @@ function Test-AndroidSdk([string]$clientPath) {
     $sdkPath = $sdkPath -replace '\\\\', '\\'
     $sdkPath = $sdkPath -replace '\\:', ':'
     return (Test-Path $sdkPath)
-}
-
-function Get-AdbPath {
-    $adbCmd = Get-Command adb -ErrorAction SilentlyContinue
-    if ($adbCmd) {
-        return $adbCmd.Source
-    }
-
-    $sdkCandidates = @()
-    if ($env:ANDROID_SDK_ROOT) {
-        $sdkCandidates += $env:ANDROID_SDK_ROOT
-    }
-    $sdkCandidates += (Join-Path $env:LOCALAPPDATA "Android\Sdk")
-
-    foreach ($sdk in $sdkCandidates) {
-        if (-not $sdk) { continue }
-        $adbPath = Join-Path $sdk "platform-tools\adb.exe"
-        if (Test-Path $adbPath) {
-            return $adbPath
-        }
-    }
-
-    return $null
 }
 
 function Wait-ForAndroidBoot([string]$adbPath, [int]$timeoutSeconds = 120) {

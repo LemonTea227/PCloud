@@ -1,5 +1,5 @@
 # Shared helper functions for PCloud PowerShell scripts.
-# Dot-source this file from run.ps1 and set-phone-host.ps1.
+# Dot-source this file from run.ps1, set-phone-host.ps1, quality.ps1, and e2e.ps1.
 
 function Get-PreferredLanIPv4 {
     $candidates = @()
@@ -79,8 +79,8 @@ function Set-ClientSocketConfig {
 
     $raw = Get-Content -Raw -Path $File
     $updated = $raw
-    $updated = [regex]::Replace($updated, 'private\s+static\s+String\s+INERIP\s*=\s*"[^"]*"\s*;\s*(//[^\r\n]*)?', "private static String INERIP = `"$SocketHost`";")
-    $updated = [regex]::Replace($updated, 'private\s+static\s+String\s+IP\s*=\s*"[^"]*"\s*;\s*(//[^\r\n]*)?', "private static String IP = `"$SocketHost`"; // configured by pcloud scripts")
+    $updated = [regex]::Replace($updated, 'private\s+static\s+String\s+INERIP\s*=\s*"[^"]*"\s*;[^\S\r\n]*(//[^\r\n]*)?', "private static String INERIP = `"$SocketHost`";")
+    $updated = [regex]::Replace($updated, 'private\s+static\s+String\s+IP\s*=\s*"[^"]*"\s*;[^\S\r\n]*(//[^\r\n]*)?', "private static String IP = `"$SocketHost`"; // configured by pcloud scripts")
     $updated = [regex]::Replace($updated, 'private\s+static\s+int\s+Port\s*=\s*\d+\s*;', "private static int Port = $Port;")
 
     if ($updated -eq $raw) {
@@ -103,4 +103,62 @@ function Set-ClientSocketConfig {
     if ($ineripMatch.Success -and $ipMatch.Success -and $portMatch.Success) {
         Write-Host "Applied values => INERIP=$($ineripMatch.Groups[1].Value), IP=$($ipMatch.Groups[1].Value), Port=$($portMatch.Groups[1].Value)"
     }
+}
+
+function Get-ProjectJavaHome {
+    param([string]$GradlePropertiesFile = "")
+
+    if ($env:JAVA_HOME -and (Test-Path $env:JAVA_HOME)) {
+        return $env:JAVA_HOME
+    }
+
+    if ($GradlePropertiesFile -and (Test-Path $GradlePropertiesFile)) {
+        $javaHomeLine = (Get-Content $GradlePropertiesFile | Where-Object { $_ -match '^org\.gradle\.java\.home=' } | Select-Object -First 1)
+        if ($javaHomeLine) {
+            $javaHome = $javaHomeLine.Substring('org.gradle.java.home='.Length)
+            if (Test-Path $javaHome) {
+                return $javaHome
+            }
+        }
+    }
+
+    return $null
+}
+
+function Test-Java11OrNewer {
+    $javaOutput = cmd /c "java -version 2>&1"
+    $versionLine = $javaOutput | Select-Object -First 1
+
+    if ($versionLine -match 'version "(\d+)') {
+        $major = [int]$matches[1]
+        if ($major -eq 1 -and $versionLine -match 'version "1\.(\d+)') {
+            return ([int]$matches[1] -ge 11)
+        }
+        return ($major -ge 11)
+    }
+
+    return $false
+}
+
+function Get-AdbPath {
+    $adbCmd = Get-Command adb -ErrorAction SilentlyContinue
+    if ($adbCmd) {
+        return $adbCmd.Source
+    }
+
+    $sdkCandidates = @()
+    if ($env:ANDROID_SDK_ROOT) {
+        $sdkCandidates += $env:ANDROID_SDK_ROOT
+    }
+    $sdkCandidates += (Join-Path $env:LOCALAPPDATA "Android\Sdk")
+
+    foreach ($sdk in $sdkCandidates) {
+        if (-not $sdk) { continue }
+        $adbPath = Join-Path $sdk "platform-tools\adb.exe"
+        if (Test-Path $adbPath) {
+            return $adbPath
+        }
+    }
+
+    return $null
 }

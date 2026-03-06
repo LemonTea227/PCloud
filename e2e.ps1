@@ -7,11 +7,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $repoRoot "pcloud-helpers.ps1")
 $clientDir = Join-Path $repoRoot "PCloud Client"
 $serverDir = Join-Path $repoRoot "PCloud Server"
 $cleanupScript = Join-Path $serverDir "cleanup_real_server_test_data.py"
 $reportPath = "PCloud Client/app/build/reports/androidTests/connected/index.html"
-$adb = Join-Path $env:LOCALAPPDATA "Android\Sdk\platform-tools\adb.exe"
+$adb = Get-AdbPath
 $gradleExitCode = 1
 
 function Get-Python3Executable {
@@ -124,7 +125,7 @@ if ($IncludeRealServer) {
 }
 
 $savedVerifierSettings = $null
-if (Test-Path $adb) {
+if ($adb -and (Test-Path $adb)) {
     try {
         & $adb start-server | Out-Null
     } catch {
@@ -159,7 +160,7 @@ if (Test-Path $adb) {
         Write-Host "Warning: could not set animation scales via adb."
     }
 } else {
-    throw "adb not found at $adb. Install Android SDK Platform-Tools and ensure it is accessible."
+    throw "adb not found. Install Android SDK Platform-Tools and ensure it is on PATH or ANDROID_SDK_ROOT is set."
 }
 
 Push-Location $clientDir
