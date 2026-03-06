@@ -67,6 +67,18 @@ function Set-ClientSocketConfig([string]$file, [string]$socketHost, [int]$port) 
         throw "MySocket.java not found at $file"
     }
 
+    $ip = $null
+    $ipv4Parsed = [System.Net.IPAddress]::TryParse($socketHost, [ref]$ip)
+    $isValidIpv4 = $ipv4Parsed -and $ip.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork
+
+    $isValidHostname = $false
+    if (-not $isValidIpv4) {
+        $isValidHostname = $socketHost -match '^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)*$'
+    }
+    if (-not ($isValidIpv4 -or $isValidHostname)) {
+        throw "Invalid host value '$socketHost'. Must be a valid IPv4 address or hostname."
+    }
+
     $raw = Get-Content -Raw -Path $file
     $updated = $raw
     $updated = [regex]::Replace($updated, 'private\s+static\s+String\s+INERIP\s*=\s*"[^"]*"\s*;\s*(//[^\r\n]*)?', "private static String INERIP = `"$socketHost`";")
@@ -83,7 +95,7 @@ function Set-ClientSocketConfig([string]$file, [string]$socketHost, [int]$port) 
         return
     }
 
-    Set-Content -Path $file -Value $updated -NoNewline
+    Set-Content -Path $file -Value $updated -NoNewline -Encoding utf8
     Write-Host "Updated MySocket.java with host=$socketHost port=$port"
 
     $verify = Get-Content -Raw -Path $file
