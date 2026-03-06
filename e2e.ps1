@@ -152,9 +152,11 @@ if ($adb -and (Test-Path $adb)) {
     try {
         & $adb start-server | Out-Null
     } catch {
+        Write-Warning "adb start-server failed: $($_.Exception.Message)"
     }
 
     $hasDevice = $false
+    $firstAdbError = $null
     $attempts = [Math]::Ceiling($DeviceWaitSeconds / 2)
     for ($i = 0; $i -lt $attempts; $i++) {
         try {
@@ -164,8 +166,12 @@ if ($adb -and (Test-Path $adb)) {
                 break
             }
         } catch {
+            if (-not $firstAdbError) { $firstAdbError = $_.Exception.Message }
         }
         Start-Sleep -Seconds 2
+    }
+    if ($firstAdbError) {
+        Write-Warning "adb devices failed during device wait: $firstAdbError"
     }
 
     if (-not $hasDevice) {
@@ -178,7 +184,9 @@ if ($adb -and (Test-Path $adb)) {
         try {
             $qemu = (& $adb shell getprop ro.kernel.qemu 2>$null | Out-String).Trim()
             $isEmulator = ($qemu -eq "1")
-        } catch {}
+        } catch {
+            Write-Warning "Emulator detection failed: $($_.Exception.Message); treating device as physical."
+        }
 
         if ($isEmulator) {
             $savedVerifierSettings = Disable-AdbPackageVerification -adbPath $adb
