@@ -55,6 +55,12 @@ This runs:
 - Server formatter: `black`
 - Server tests: `python -m unittest`
 
+Use `-Check` for a non-modifying check (suitable for CI or pre-merge gates):
+
+```powershell
+./quality.ps1 -Check
+```
+
 When running `./e2e.ps1 -IncludeRealServer`, the script also performs pre/post cleanup of real-server test data (`realsrv*` users and `real_e2e_*` albums/photos/filesystem folders) via `PCloud Server/cleanup_real_server_test_data.py`.
 
 ## Server dependencies

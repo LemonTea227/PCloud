@@ -1,3 +1,7 @@
+param(
+    [switch]$Check
+)
+
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $repoRoot "pcloud-helpers.ps1")
@@ -17,10 +21,15 @@ if ($projectJavaHome) {
 $androidSdkConfigured = Test-AndroidSdk -ClientPath $clientDir
 
 if ($androidSdkConfigured -and (Test-Java11OrNewer)) {
-    Write-Host "[1/3] Android formatting + lint + unit tests"
+    $gradleTasks = if ($Check) {
+        @(":app:spotlessCheck", ":app:lintDebug", ":app:testDebugUnitTest")
+    } else {
+        @(":app:spotlessApply", ":app:lintDebug", ":app:testDebugUnitTest")
+    }
+    Write-Host "[1/3] Android $(if ($Check) { 'format check' } else { 'formatting' }) + lint + unit tests"
     Push-Location $clientDir
     try {
-        .\gradlew.bat :app:spotlessApply :app:lintDebug :app:testDebugUnitTest
+        .\gradlew.bat @gradleTasks
         if ($LASTEXITCODE -ne 0) {
             throw "Android quality checks failed (exit code $LASTEXITCODE)."
         }
@@ -33,15 +42,16 @@ if ($androidSdkConfigured -and (Test-Java11OrNewer)) {
     Write-Warning "Android SDK is not configured to a valid path. Skipping Android quality checks."
 }
 
-Write-Host "[2/3] Python formatting + tests"
+Write-Host "[2/3] Python $(if ($Check) { 'format check' } else { 'formatting' }) + tests"
 $pythonExe = Get-Python3Executable -RepoRoot $repoRoot
 if (-not $pythonExe) {
     throw "Python 3 executable was not found. Install Python 3.10+ or ensure 'py -3' works."
 }
 
-& $pythonExe -m black $serverDir
+$blackArgs = if ($Check) { @("-m", "black", "--check", $serverDir) } else { @("-m", "black", $serverDir) }
+& $pythonExe @blackArgs
 if ($LASTEXITCODE -ne 0) {
-    throw "Python formatting (black) failed (exit code $LASTEXITCODE)."
+    throw "Python formatting (black) $(if ($Check) { 'check' } else { 'formatting' }) failed (exit code $LASTEXITCODE)."
 }
 
 Push-Location $serverDir
